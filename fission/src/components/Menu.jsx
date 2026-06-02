@@ -7,7 +7,7 @@ const LEGEND = [
   { type: CELL_TYPE.AMPLIFIER, title: 'AMPLIFIER', text: 'Explosions fire two orbs into every neighbor.' },
 ];
 
-export default function Menu({ onPlay }) {
+export default function Menu({ onPlay, onTutorial }) {
   return (
     <main className="screen menu-screen">
       <div className="top-rail" aria-hidden="true">
@@ -32,6 +32,7 @@ export default function Menu({ onPlay }) {
           <p>Territory strategy. Chain reactions. Three cells that change everything.</p>
         </div>
         <button className="primary-button" onClick={onPlay}>Play</button>
+        <button className="tutorial-button" onClick={onTutorial}>Tutorial</button>
         <div className="legend-row">
           {LEGEND.map((item) => (
             <article className="legend-item" key={item.type}>

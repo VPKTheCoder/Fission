@@ -5,6 +5,7 @@ import DifficultySelect from './components/DifficultySelect.jsx';
 import Game from './components/Game.jsx';
 import GameOver from './components/GameOver.jsx';
 import ParticleCanvas from './components/ParticleCanvas.jsx';
+import Tutorial from './components/Tutorial.jsx';
 import { useSound } from './hooks/useSound.js';
 import { GAME_MODE, DIFFICULTY, PLAYER } from './utils/constants.js';
 
@@ -87,8 +88,12 @@ export default function App() {
         onMainMenu={goToMenu}
       />
     );
+  } else if (screen === 'tutorial') {
+    content = (
+      <Tutorial onClose={() => { sound.playClick(); setScreen('menu'); }} />
+    );
   } else {
-    content = <Menu onPlay={() => { sound.playClick(); setScreen('mode'); }} />;
+    content = <Menu onPlay={() => { sound.playClick(); setScreen('mode'); }} onTutorial={() => { sound.playClick(); setScreen('tutorial'); }} />;
   }
 
   return (
