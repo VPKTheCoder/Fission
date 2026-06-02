@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Menu from './components/Menu.jsx';
 import ModeSelect from './components/ModeSelect.jsx';
+import PlayerTypeSelect from './components/PlayerTypeSelect.jsx';
 import DifficultySelect from './components/DifficultySelect.jsx';
 import Game from './components/Game.jsx';
 import GameOver from './components/GameOver.jsx';
@@ -13,6 +14,7 @@ export default function App() {
   const [screen, setScreen] = useState('menu');
   const [mode, setMode] = useState(GAME_MODE.CONQUEST);
   const [difficulty, setDifficulty] = useState(DIFFICULTY.NORMAL);
+  const [isTwoPlayer, setIsTwoPlayer] = useState(false);
   const [gameResult, setGameResult] = useState({ winner: null, scores: null, stats: null });
   const [gameKey, setGameKey] = useState(0);
   const sound = useSound();
@@ -29,12 +31,21 @@ export default function App() {
   function startMode(nextMode) {
     sound.playClick();
     setMode(nextMode);
-    setScreen('difficulty');
+    setScreen('playertype');
   }
 
   function startGame(nextDifficulty) {
     sound.playClick();
     setDifficulty(nextDifficulty);
+    setIsTwoPlayer(false);
+    setGameResult({ winner: null, scores: null, stats: null });
+    setGameKey((key) => key + 1);
+    setScreen('game');
+  }
+
+  function startTwoPlayer() {
+    sound.playClick();
+    setIsTwoPlayer(true);
     setGameResult({ winner: null, scores: null, stats: null });
     setGameKey((key) => key + 1);
     setScreen('game');
@@ -65,14 +76,23 @@ export default function App() {
   let content;
   if (screen === 'mode') {
     content = <ModeSelect onSelect={startMode} onBack={() => { sound.playClick(); setScreen('menu'); }} />;
+  } else if (screen === 'playertype') {
+    content = (
+      <PlayerTypeSelect
+        onSelectAI={() => { sound.playClick(); setScreen('difficulty'); }}
+        onSelect2P={startTwoPlayer}
+        onBack={() => { sound.playClick(); setScreen('mode'); }}
+      />
+    );
   } else if (screen === 'difficulty') {
-    content = <DifficultySelect onSelect={startGame} onBack={() => { sound.playClick(); setScreen('mode'); }} />;
+    content = <DifficultySelect onSelect={startGame} onBack={() => { sound.playClick(); setScreen('playertype'); }} />;
   } else if (screen === 'game') {
     content = (
       <Game
         key={gameKey}
         mode={mode}
         difficulty={difficulty}
+        isTwoPlayer={isTwoPlayer}
         onGameOver={handleGameOver}
         onMainMenu={goToMenu}
       />
@@ -82,6 +102,7 @@ export default function App() {
       <GameOver
         winner={gameResult.winner}
         mode={mode}
+        isTwoPlayer={isTwoPlayer}
         scores={gameResult.scores}
         stats={gameResult.stats}
         onPlayAgain={playAgain}

@@ -18,12 +18,14 @@ const TOTAL_CELLS = 64;
 
 function OrbEnergyBar({ count, side }) {
   const pct = Math.min(100, (count / TOTAL_CELLS) * 100);
+  const label = side === 'human' ? 'HUMAN' : side === 'p1' ? 'P1' : side === 'p2' ? 'P2' : 'AI';
+  const cssSide = side === 'p1' ? 'human' : side === 'p2' ? 'ai' : side;
   return (
     <div className="energy-bar">
-      <strong>{side === 'human' ? 'HUMAN' : 'AI'}</strong>
+      <strong>{label}</strong>
       <div className="energy-track">
         <div
-          className={`energy-fill energy-fill-${side}`}
+          className={`energy-fill energy-fill-${cssSide}`}
           style={{ width: `${Math.max(2, pct)}%` }}
         />
       </div>
@@ -32,7 +34,7 @@ function OrbEnergyBar({ count, side }) {
   );
 }
 
-export default function HUD({ mode, turn, scores, counts, currentPlayer, isThinking, soundEnabled, onToggleSound }) {
+export default function HUD({ mode, turn, scores, counts, currentPlayer, isThinking, isTwoPlayer = false, soundEnabled, onToggleSound }) {
   const modeLabel = mode === GAME_MODE.CASCADE ? 'CASCADE' : 'CONQUEST';
   const isHuman = currentPlayer === PLAYER.HUMAN;
 
@@ -57,7 +59,7 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
     <header className={`hud${isHuman ? ' hud-turn-human' : ' hud-turn-ai'}`}>
       <div className="hud-player">
         <span className="dot dot-human" />
-        <OrbEnergyBar count={counts.human} side="human" />
+        <OrbEnergyBar count={counts.human} side={isTwoPlayer ? 'p1' : 'human'} />
       </div>
       <div className="hud-center">
         {isThinking ? (
@@ -66,6 +68,13 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
             {THINKING_MSGS[msgIndex]}
             <span className="thinking-dots">{'.'.repeat(dotCount)}</span>
           </div>
+        ) : isTwoPlayer ? (
+          <>
+            <span className={`turn-label turn-${isHuman ? 'human' : 'ai'}`}>
+              {isHuman ? "P1's TURN" : "P2's TURN"}
+            </span>
+            <span className="mode-label">{modeLabel} · TURN {turn + 1}</span>
+          </>
         ) : (
           <>
             <span className={`turn-label turn-${isHuman ? 'human' : 'ai'}`}>
@@ -76,7 +85,7 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
         )}
         {mode === GAME_MODE.CASCADE && !isThinking && (
           <span className="score-line">
-            YOU: {scores.human} | AI: {scores.ai}
+            {isTwoPlayer ? `P1: ${scores.human} | P2: ${scores.ai}` : `YOU: ${scores.human} | AI: ${scores.ai}`}
           </span>
         )}
         <div className="hud-keyhints">
@@ -86,7 +95,7 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
         </div>
       </div>
       <div className="hud-player hud-ai">
-        <OrbEnergyBar count={counts.ai} side="ai" />
+        <OrbEnergyBar count={counts.ai} side={isTwoPlayer ? 'p2' : 'ai'} />
         <span className="dot dot-ai" />
         <button
           className={`sound-toggle ${soundEnabled ? '' : 'muted'}`}

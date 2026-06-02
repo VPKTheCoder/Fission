@@ -2,16 +2,16 @@ import Cell from './Cell.jsx';
 import { PLAYER } from '../utils/constants.js';
 import { canPlace } from '../utils/gameLogic.js';
 
-export default function Board({ board, currentPlayer, explodingCells, isAnimating, onCellClick, lastMove, cursorPos, hintCell, placingCell }) {
+export default function Board({ board, currentPlayer, explodingCells, isAnimating, onCellClick, lastMove, cursorPos, hintCell, placingCell, isTwoPlayer = false }) {
   return (
     <section className="board-container" aria-label="FISSION board">
       <div className="board-grid">
         {board.map((row, rowIndex) =>
           row.map((cell, colIndex) => {
             const isValidMove =
-              currentPlayer === PLAYER.HUMAN &&
               !isAnimating &&
-              canPlace(board, rowIndex, colIndex, PLAYER.HUMAN);
+              canPlace(board, rowIndex, colIndex, currentPlayer) &&
+              (isTwoPlayer || currentPlayer === PLAYER.HUMAN);
 
             const isLastMove = lastMove && lastMove.row === rowIndex && lastMove.col === colIndex;
             const isCursor = cursorPos && cursorPos.row === rowIndex && cursorPos.col === colIndex;

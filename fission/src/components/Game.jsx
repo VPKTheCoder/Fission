@@ -30,7 +30,7 @@ function getHint(board, mode) {
   return bestMove;
 }
 
-export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
+export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver, onMainMenu }) {
   const sound = useSound();
   const [moveHistory, setMoveHistory] = useState([]);
   const [lastMove, setLastMove] = useState(null);
@@ -51,8 +51,8 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
     onGameOver(winner, scores, finalStats);
   }, [onGameOver]);
 
-  const game = useGame({ mode, onGameOver: wrappedOnGameOver });
-  const isHumanTurn = Boolean(game && game.currentPlayer === PLAYER.HUMAN && !game.isAnimating);
+  const game = useGame({ mode, onGameOver: wrappedOnGameOver, isTwoPlayer });
+  const isHumanTurn = Boolean(game && !game.isAnimating && (isTwoPlayer || game.currentPlayer === PLAYER.HUMAN));
 
   const handleAIMoveWrapper = useCallback(async (move) => {
     const result = await game.handleAIMove(move);
@@ -66,7 +66,7 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
     return result;
   }, [game.handleAIMove]);
 
-  const { isThinking } = useAI({
+  const { isThinking } = useAI(isTwoPlayer ? {} : {
     board: game.board,
     currentPlayer: game.currentPlayer,
     difficulty,
@@ -78,14 +78,15 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
   });
 
   const handleCellClick = useCallback(async (row, col) => {
-    if (!canPlace(game.board, row, col, PLAYER.HUMAN)) return false;
+    const player = game.currentPlayer;
+    if (!canPlace(game.board, row, col, player)) return false;
     setPlacingCell({ row, col });
     sound.playPlace();
     const result = await game.handleCellClick(row, col);
     if (result) {
       setLastMove({ row, col });
       setMoveHistory((h) => [...h, {
-        player: PLAYER.HUMAN, row, col, chain: 0, score: 0,
+        player, row, col, chain: 0, score: 0,
       }]);
       setCursorPos({ row, col });
       setHintCell(null);
@@ -200,7 +201,7 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
     }
     if (e.key === '?' || e.key === '/') {
       e.preventDefault();
-      if (!game.board || isThinking || game.isAnimating || game.winner) return;
+      if (isTwoPlayer || !game.board || isThinking || game.isAnimating || game.winner) return;
       const hint = getHint(game.board, mode);
       setHintCell(hint);
       if (hint) {
@@ -260,6 +261,7 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
         counts={game.orbCounts}
         currentPlayer={game.currentPlayer}
         isThinking={isThinking}
+        isTwoPlayer={isTwoPlayer}
         soundEnabled={soundEnabled}
         onToggleSound={() => { sound.setMuted((v) => !v); setSoundEnabled((v) => !v); }}
       />
@@ -273,6 +275,7 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
         cursorPos={isHumanTurn && !game.winner ? cursorPos : null}
         hintCell={hintCell}
         placingCell={placingCell}
+        isTwoPlayer={isTwoPlayer}
       />
       <button className="ghost-button menu-button" onClick={onMainMenu}>Main Menu</button>
 

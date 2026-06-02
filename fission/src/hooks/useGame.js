@@ -33,7 +33,7 @@ function getAnimationPlan(steps) {
   };
 }
 
-export function useGame({ mode, onGameOver }) {
+export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
   const [board, setBoard] = useState(() => generateBoard(mode));
   const [currentPlayer, setCurrentPlayer] = useState(PLAYER.HUMAN);
   const [turn, setTurn] = useState(0);
@@ -154,18 +154,19 @@ export function useGame({ mode, onGameOver }) {
   }, [board, currentPlayer, finishGame, isAnimating, mode, resolveWinner, scores, turn, winner]);
 
   const handleCellClick = useCallback(async (row, col) => {
+    const player = isTwoPlayer ? currentPlayer : PLAYER.HUMAN;
     if (mode === GAME_MODE.OVERDRIVE && quantumPending) {
-      const result = await applyPlayerMove(row, col, PLAYER.HUMAN);
+      const result = await applyPlayerMove(row, col, player);
       if (result) {
-        const result2 = await applyPlayerMove(row, col, PLAYER.HUMAN);
+        const result2 = await applyPlayerMove(row, col, player);
         setQuantumPending(false);
         return result2;
       }
       setQuantumPending(false);
       return result;
     }
-    return applyPlayerMove(row, col, PLAYER.HUMAN);
-  }, [applyPlayerMove, mode, quantumPending]);
+    return applyPlayerMove(row, col, player);
+  }, [applyPlayerMove, mode, quantumPending, isTwoPlayer, currentPlayer]);
 
   const handleAIMove = useCallback((move) => {
     if (!move) {

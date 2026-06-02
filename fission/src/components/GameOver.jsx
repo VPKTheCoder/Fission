@@ -32,13 +32,15 @@ function AnimatedValue({ value, label }) {
   );
 }
 
-export default function GameOver({ winner, mode, scores, stats, onPlayAgain, onMainMenu }) {
-  const title = winner === 'draw' ? 'STALEMATE' : winner === PLAYER.HUMAN ? 'VICTORY' : 'DEFEAT';
+export default function GameOver({ winner, mode, isTwoPlayer = false, scores, stats, onPlayAgain, onMainMenu }) {
+  const title = winner === 'draw' ? 'STALEMATE' : winner === PLAYER.HUMAN ? (isTwoPlayer ? 'P1 WINS' : 'VICTORY') : (isTwoPlayer ? 'P2 WINS' : 'DEFEAT');
   const resultClass = winner === 'draw' ? 'stalemate' : winner === PLAYER.HUMAN ? 'victory' : 'defeat';
   const [copied, setCopied] = useState(false);
 
   function handleShare() {
-    const text = `I ${winner === PLAYER.HUMAN ? 'won' : winner === 'draw' ? 'drew' : 'lost'} at FISSION!\n` +
+    const who = winner === PLAYER.HUMAN ? (isTwoPlayer ? 'Player 1' : 'I') : winner === 'draw' ? 'Nobody' : (isTwoPlayer ? 'Player 2' : 'I');
+    const verb = winner === 'draw' ? 'drew' : 'won';
+    const text = `${who} ${verb} at FISSION!\n` +
       `Mode: ${mode.toUpperCase()}\n` +
       (mode === GAME_MODE.CASCADE ? `Score: ${scores?.human} - ${scores?.ai}\n` : `Result: ${title}\n`) +
       (stats ? `Longest chain: ${stats.longestChain}\n` : '') +
@@ -62,7 +64,9 @@ export default function GameOver({ winner, mode, scores, stats, onPlayAgain, onM
       <section className={`gameover-panel ${resultClass}`}>
         <h2>{title}</h2>
         {mode === GAME_MODE.CASCADE && scores && (
-          <p className="final-score">YOU: {scores.human} | AI: {scores.ai}</p>
+          <p className="final-score">
+            {isTwoPlayer ? `P1: ${scores.human} | P2: ${scores.ai}` : `YOU: ${scores.human} | AI: ${scores.ai}`}
+          </p>
         )}
         {stats && (
           <div className="stats-grid">
