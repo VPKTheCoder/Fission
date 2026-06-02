@@ -1,0 +1,334 @@
+import { useState, useCallback, useEffect, useRef } from 'react';
+import Board from './Board.jsx';
+import HUD from './HUD.jsx';
+import { useAI } from '../hooks/useAI.js';
+import { useGame } from '../hooks/useGame.js';
+import { useSound } from '../hooks/useSound.js';
+import { GAME_MODE, PLAYER, CELL_TYPE } from '../utils/constants.js';
+import { getValidMoves, getCriticalMass, canPlace } from '../utils/gameLogic.js';
+
+function getHint(board, mode) {
+  const moves = getValidMoves(board, PLAYER.HUMAN);
+  if (moves.length === 0) return null;
+  let bestScore = -Infinity;
+  let bestMove = null;
+  for (const [row, col] of moves) {
+    const cell = board[row][col];
+    let score = 0;
+    if (cell.type === CELL_TYPE.AMPLIFIER) score += 10;
+    if (cell.type === CELL_TYPE.CATALYST) score += 5;
+    const cm = getCriticalMass(row, col, cell.type);
+    const pressure = cell.orbs / cm;
+    score += pressure * 5;
+    if (cell.owner === PLAYER.HUMAN) score += 2;
+    if (cell.owner === null) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = { row, col };
+    }
+  }
+  return bestMove;
+}
+
+export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
+  const sound = useSound();
+  const [moveHistory, setMoveHistory] = useState([]);
+  const [lastMove, setLastMove] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showDev, setShowDev] = useState(false);
+  const [shaking, setShaking] = useState(false);
+  const [chainBanner, setChainBanner] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [cursorPos, setCursorPos] = useState({ row: 4, col: 4 });
+  const [hintCell, setHintCell] = useState(null);
+  const [placingCell, setPlacingCell] = useState(null);
+  const statsRef = useRef({ longestChain: 0, cellsConverted: 0, specialCells: 0, totalTurns: 0 });
+  const prevBoardRef = useRef(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  const wrappedOnGameOver = useCallback((winner, scores) => {
+    const finalStats = { ...statsRef.current, totalTurns: statsRef.current.totalTurns };
+    onGameOver(winner, scores, finalStats);
+  }, [onGameOver]);
+
+  const game = useGame({ mode, onGameOver: wrappedOnGameOver });
+  const isHumanTurn = Boolean(game && game.currentPlayer === PLAYER.HUMAN && !game.isAnimating);
+
+  const handleAIMoveWrapper = useCallback(async (move) => {
+    const result = await game.handleAIMove(move);
+    if (result && move) {
+      setLastMove({ row: move.row, col: move.col });
+      setMoveHistory((h) => [...h, {
+        player: PLAYER.AI, row: move.row, col: move.col, chain: 0, score: 0,
+      }]);
+      setHintCell(null);
+    }
+    return result;
+  }, [game.handleAIMove]);
+
+  const { isThinking } = useAI({
+    board: game.board,
+    currentPlayer: game.currentPlayer,
+    difficulty,
+    mode,
+    scores: game.scores,
+    isAnimating: game.isAnimating,
+    winner: game.winner,
+    onMove: handleAIMoveWrapper,
+  });
+
+  const handleCellClick = useCallback(async (row, col) => {
+    if (!canPlace(game.board, row, col, PLAYER.HUMAN)) return false;
+    setPlacingCell({ row, col });
+    sound.playPlace();
+    const result = await game.handleCellClick(row, col);
+    if (result) {
+      setLastMove({ row, col });
+      setMoveHistory((h) => [...h, {
+        player: PLAYER.HUMAN, row, col, chain: 0, score: 0,
+      }]);
+      setCursorPos({ row, col });
+      setHintCell(null);
+    }
+    setPlacingCell(null);
+    return result;
+  }, [game, sound]);
+
+  useEffect(() => {
+    if (game.lastChainLength <= 0) return;
+    const len = game.lastChainLength;
+    const score = mode === GAME_MODE.CASCADE ? Math.max(1, len) : 0;
+
+    setMoveHistory((h) => {
+      if (h.length === 0) return h;
+      const updated = [...h];
+      const last = { ...updated[updated.length - 1] };
+      last.chain = len;
+      last.score = score;
+      updated[updated.length - 1] = last;
+      return updated;
+    });
+
+    if (len > statsRef.current.longestChain) {
+      statsRef.current.longestChain = len;
+    }
+    statsRef.current.totalTurns += 1;
+
+    if (len >= 10) {
+      setChainBanner('CHAIN REACTION: CRITICAL MASS');
+      setTimeout(() => setChainBanner(null), 2500);
+    }
+    if (len >= 3) {
+      setShaking(true);
+      setTimeout(() => setShaking(false), 400);
+    }
+    if (mode === GAME_MODE.CASCADE && game.scores) {
+      const humanScore = game.scores[PLAYER.HUMAN];
+      if (humanScore === 42) {
+        setToast('The answer to life, the universe, and everything.');
+        setTimeout(() => setToast(null), 3500);
+      }
+    }
+  }, [game.lastChainLength, game.scores, mode]);
+
+  useEffect(() => {
+    if (!game.board || !prevBoardRef.current) {
+      prevBoardRef.current = game.board;
+      return;
+    }
+    if (game.currentPlayer === PLAYER.AI) return;
+
+    const prev = prevBoardRef.current;
+    const curr = game.board;
+    let converted = 0;
+    let special = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const pc = prev[r][c];
+        const cc = curr[r][c];
+        if (cc.owner === PLAYER.HUMAN && pc.owner !== null && pc.owner !== PLAYER.HUMAN) {
+          converted++;
+          if (cc.type !== 'normal') special++;
+        }
+      }
+    }
+    if (converted > 0) {
+      statsRef.current.cellsConverted += converted;
+      statsRef.current.specialCells += special;
+    }
+    prevBoardRef.current = game.board;
+  }, [game.board, game.currentPlayer]);
+
+  useEffect(() => {
+    if (game.isAnimating && game.explodingCells.size > 0) {
+      sound.playExplosion();
+    }
+  }, [game.isAnimating, game.explodingCells, sound]);
+
+  useEffect(() => {
+    if (!game.winner) {
+      sound.startAmbient();
+    } else {
+      sound.stopAmbient();
+      statsRef.current.totalTurns = game.turn + 1;
+    }
+    return () => sound.stopAmbient();
+  }, [game.winner, game.turn, sound]);
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'h' || e.key === 'H') {
+      e.preventDefault();
+      setShowHistory((v) => !v);
+      return;
+    }
+    if (e.key === 'D' && e.ctrlKey && e.shiftKey) {
+      e.preventDefault();
+      setShowDev((v) => !v);
+      return;
+    }
+    if (e.key === '?' || e.key === '/') {
+      e.preventDefault();
+      if (!game.board || isThinking || game.isAnimating || game.winner) return;
+      const hint = getHint(game.board, mode);
+      setHintCell(hint);
+      if (hint) {
+        setToast('Hint: try the highlighted cell');
+        setTimeout(() => setToast(null), 2000);
+      }
+      return;
+    }
+    if (!isHumanTurn || game.winner) return;
+
+    const cursor = { ...cursorPos };
+    switch (e.key) {
+      case 'ArrowUp':
+        if (e.shiftKey) { cursor.row = Math.max(0, cursor.row - 1); break; }
+        if (cursor.row > 0) cursor.row--;
+        break;
+      case 'ArrowDown':
+        if (e.shiftKey) { cursor.row = Math.min(7, cursor.row + 1); break; }
+        if (cursor.row < 7) cursor.row++;
+        break;
+      case 'ArrowLeft':
+        if (cursor.col > 0) cursor.col--;
+        break;
+      case 'ArrowRight':
+        if (cursor.col < 7) cursor.col++;
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (!game.isAnimating && !isThinking) {
+          handleCellClick(cursorPos.row, cursorPos.col);
+        }
+        return;
+      case 'm':
+      case 'M':
+        sound.setMuted((v) => !v);
+        setSoundEnabled((v) => !v);
+        return;
+      default:
+        return;
+    }
+    setCursorPos(cursor);
+  }, [cursorPos, game.board, game.isAnimating, isHumanTurn, isThinking, game.winner, handleCellClick, mode, sound]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  return (
+    <main className={`game-shell${shaking ? ' shaking' : ''}`}>
+      <div className="game-backdrop" aria-hidden="true" />
+      <HUD
+        mode={mode}
+        turn={game.turn}
+        scores={game.scores}
+        counts={game.orbCounts}
+        currentPlayer={game.currentPlayer}
+        isThinking={isThinking}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => { sound.setMuted((v) => !v); setSoundEnabled((v) => !v); }}
+      />
+      <Board
+        board={game.board}
+        currentPlayer={game.currentPlayer}
+        explodingCells={game.explodingCells}
+        isAnimating={game.isAnimating || isThinking}
+        onCellClick={handleCellClick}
+        lastMove={lastMove}
+        cursorPos={isHumanTurn && !game.winner ? cursorPos : null}
+        hintCell={hintCell}
+        placingCell={placingCell}
+      />
+      <button className="ghost-button menu-button" onClick={onMainMenu}>Main Menu</button>
+
+      {chainBanner && (
+        <div className="chain-banner" key={chainBanner}>{chainBanner}</div>
+      )}
+      {toast && (
+        <div className="toast" key={toast}>{toast}</div>
+      )}
+
+      {showHistory && (
+        <div className="terminal-overlay">
+          <div className="term-line" style={{ color: 'var(--gold)', fontWeight: 800, marginBottom: '0.3rem' }}>
+            MOVE HISTORY
+          </div>
+          {moveHistory.length === 0 && (
+            <div className="term-line" style={{ color: 'var(--dim)' }}>No moves yet</div>
+          )}
+          {moveHistory.map((entry, i) => (
+            <div className="term-line" key={i}>
+              <span className="term-ts">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+              <span className={`term-player term-${entry.player}`}>
+                {entry.player.toUpperCase().padEnd(6)}
+              </span>
+              {' '}→ ({entry.row},{entry.col}){' '}
+              {entry.chain > 0 && <span className="term-chain">[chain:{entry.chain}]</span>}
+              {entry.score > 0 && <span className="term-chain"> [score:{entry.score}]</span>}
+            </div>
+          ))}
+          <div className="term-line" style={{ color: 'var(--dim)', marginTop: '0.3rem', fontSize: '0.65rem' }}>
+            Press H to toggle
+          </div>
+        </div>
+      )}
+
+      {showDev && (
+        <div className="dev-panel">
+          <div className="dev-row">
+            <span className="dev-label">MODE</span>
+            <span className="dev-value">{mode.toUpperCase()}</span>
+          </div>
+          <div className="dev-row">
+            <span className="dev-label">DIFFICULTY</span>
+            <span className="dev-value">{difficulty.toUpperCase()}</span>
+          </div>
+          <div className="dev-row">
+            <span className="dev-label">TURN</span>
+            <span className="dev-value">{game.turn + 1}</span>
+          </div>
+          <div className="dev-row">
+            <span className="dev-label">LONGEST CHAIN</span>
+            <span className="dev-value">{statsRef.current.longestChain}</span>
+          </div>
+          <div className="dev-row">
+            <span className="dev-label">CONVERTED</span>
+            <span className="dev-value">{statsRef.current.cellsConverted}</span>
+          </div>
+          <div className="dev-row">
+            <span className="dev-label">SPECIAL CELLS</span>
+            <span className="dev-value">{statsRef.current.specialCells}</span>
+          </div>
+          <div className="dev-row" style={{ borderBottom: 'none', marginTop: '0.3rem' }}>
+            <span className="dev-label" style={{ fontSize: '0.6rem' }}>
+              Ctrl+Shift+D toggle
+            </span>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
