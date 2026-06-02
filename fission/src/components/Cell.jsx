@@ -45,6 +45,17 @@ export function CellIcon({ type, charged }) {
     );
   }
 
+  if (type === CELL_TYPE.SINGULARITY) {
+    return (
+      <svg viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="6" fill="currentColor" opacity="0.3" />
+        <circle cx="10" cy="10" r="3" fill="currentColor" opacity="0.7" />
+        <circle cx="10" cy="10" r="1" fill="currentColor" />
+        <path d="M4 4l4 4M16 4l-4 4M4 16l4-4M16 16l-4-4" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
+      </svg>
+    );
+  }
+
   return null;
 }
 

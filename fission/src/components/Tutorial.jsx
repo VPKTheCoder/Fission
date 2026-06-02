@@ -1,13 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import Cell from './Cell.jsx';
-import { PLAYER, CELL_TYPE, ROWS, COLS } from '../utils/constants.js';
+import { PLAYER, CELL_TYPE, ROWS, COLS, GAME_MODE } from '../utils/constants.js';
 import { generateBoard } from '../utils/boardGenerator.js';
 import { placeOrb } from '../utils/gameLogic.js';
 
-const STEP_DELAY = 80;
+const STEP_DELAY = 100;
+const MAX_ANIM_FRAMES = 25;
+const FAST_STEP_DELAY = 60;
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getAnimationPlan(steps) {
+  if (steps.length <= MAX_ANIM_FRAMES) return { frames: steps, delay: STEP_DELAY };
+  const rate = Math.ceil(steps.length / MAX_ANIM_FRAMES);
+  const indices = new Set();
+  indices.add(0);
+  for (let i = rate; i < steps.length - 1; i += rate) indices.add(i);
+  indices.add(steps.length - 1);
+  return {
+    frames: Array.from(indices).sort((a, b) => a - b).map((i) => steps[i]),
+    delay: FAST_STEP_DELAY,
+  };
 }
 
 function makeEmptyBoard() {
@@ -32,222 +47,348 @@ function buildBoard(step) {
   return b;
 }
 
-const STEPS = [
-  {
-    id: 'welcome',
-    type: 'info',
-    title: 'Welcome to FISSION',
-    subtitle: 'Interactive Guided Tutorial',
-    description: `FISSION is a two-player territory strategy game played on an 8×8 grid.
-
-You (cyan) play against an AI opponent (coral).
-
-Place orbs on cells to claim territory. When a cell reaches its critical mass, it explodes — sending orbs to neighboring cells and converting them to your color. This can trigger devastating chain reactions.
-
-There are two game modes:
-  CONQUEST — Eliminate all enemy orbs. Last player standing wins.
-  CASCADE — Chain reactions score points. 20 turns each. Highest score wins.
-
-Let's play through every scenario you'll face.`,
-  },
-  {
-    id: 'board-layout',
-    type: 'info',
-    title: 'The Board',
-    description: `The 8×8 board is divided into three cell types by position:
-  CORNERS — Critical mass: 2 (red boundary)
-  EDGES   — Critical mass: 3 (orange boundary)
-  INTERIOR — Critical mass: 4 (blue boundary)
-
-Three special cells are fixed on every board:
-  CATALYST (gold, ⚡) — Lower critical mass by 1 (min 1)
-  VOID (purple, 🛡️) — Absorbs one incoming explosion, then depletes
-  AMPLIFIER (green, 📡) — Sends 2 orbs to each neighbor when exploding
-
-The board below shows these regions and cells.`,
-    showBoard: true,
-    highlightRegions: true,
-  },
-  {
-    id: 'placement',
-    type: 'interact',
-    title: 'Orb Placement',
-    instruction: 'Click the highlighted cell to place your first orb.',
-    setupBoard: (board) => {},
-    getTargets: () => [[4, 4]],
-    onComplete: () => 'Your orb has been placed! That cell now belongs to you (cyan).',
-    hint: 'Click the glowing cell at row 4, column 4.',
-  },
-  {
-    id: 'build-up',
-    type: 'interact',
-    title: 'Building Orbs',
-    instruction: 'Place an orb on your own cell to increase its orb count.',
-    setupBoard: (board) => {
-      setCell(board, 4, 4, 1, PLAYER.HUMAN);
-    },
-    getTargets: () => [[4, 4]],
-    onComplete: () => 'Now this cell has 2 orbs. The more orbs a cell has, the closer it is to exploding!',
-    hint: 'Click your own cell at (4,4) again.',
-  },
-  {
-    id: 'critical-mass',
-    type: 'interact',
-    title: 'Critical Mass & Explosions',
-    instruction: 'This edge cell needs 1 more orb to reach critical mass (3). Click it to trigger an explosion!',
-    setupBoard: (board) => {
-      setCell(board, 0, 4, 2, PLAYER.HUMAN);
-    },
-    getTargets: () => [[0, 4]],
-    onComplete: () => 'The cell reached critical mass and exploded! Orbs were sent to neighboring cells, converting them to your color. After an explosion, a cell loses orbs equal to its critical mass.',
-    hint: 'Click cell (0,4) to trigger the explosion.',
-  },
-  {
-    id: 'chain-reaction',
-    type: 'interact',
-    title: 'Chain Reactions',
-    instruction: 'This setup will trigger a chain reaction. Click the highlighted cell to start the cascade!',
-    setupBoard: (board) => {
-      setCell(board, 2, 2, 3, PLAYER.HUMAN);
-      setCell(board, 2, 3, 3, PLAYER.HUMAN);
-      setCell(board, 2, 4, 3, PLAYER.HUMAN);
-    },
-    getTargets: () => [[2, 2]],
-    onComplete: (len) => len >= 2
-      ? `Chain reaction! ${len} cells exploded in sequence. Each explosion triggered the next. Watch for these — they can flip large sections of the board in a single move!`
-      : 'The cell exploded! Try to set up chains where one explosion feeds into another.',
-    hint: 'Click (2,2) to start the chain reaction.',
-  },
-  {
-    id: 'catalyst',
-    type: 'interact',
-    title: 'Catalyst Cells',
-    instruction: 'Catalyst cells have lower critical mass. This catalyst needs 1 more orb to explode (normally 4, reduced to 3). Click it!',
-    setupBoard: (board) => {
-      board[1][1].owner = PLAYER.HUMAN;
-      board[1][1].orbs = 2;
-    },
-    getTargets: () => [[1, 1]],
-    onComplete: () => 'The Catalyst exploded sooner than a normal cell would! Catalysts reduce critical mass by 1 — great for starting chain reactions early.',
-    hint: 'Click the golden Catalyst cell at (1,1).',
-    specialHighlight: CELL_TYPE.CATALYST,
-  },
-  {
-    id: 'void',
-    type: 'interact',
-    title: 'Void Cells',
-    instruction: 'The cell at (0,3) is a charged Void — it will absorb the first explosion directed at it. Click (0,2) to trigger an explosion toward the Void.',
-    setupBoard: (board) => {
-      board[0][3].voidCharge = true;
-      setCell(board, 0, 2, 2, PLAYER.HUMAN);
-    },
-    getTargets: () => [[0, 2]],
-    onComplete: () => 'The Void absorbed the explosion from that direction! It is now depleted (grayed out). A depleted Void no longer blocks explosions — use this strategically.',
-    hint: 'Click (0,2) to trigger an explosion and see the Void in action.',
-  },
-  {
-    id: 'amplifier',
-    type: 'interact',
-    title: 'Amplifier Cells',
-    instruction: 'Amplifiers send 2 orbs to each neighbor when they explode (instead of 1). This one has 3 orbs — place one more to set it off!',
-    setupBoard: (board) => {
-      setCell(board, 3, 3, 3, PLAYER.HUMAN);
-    },
-    getTargets: () => [[3, 3]],
-    onComplete: () => 'The Amplifier sent 2 orbs to every neighbor! That is double the normal output. Amplifiers are the most powerful cells on the board — contest them aggressively.',
-    hint: 'Click the green Amplifier at (3,3).',
-    specialHighlight: CELL_TYPE.AMPLIFIER,
-  },
-  {
-    id: 'conquest',
-    type: 'info',
-    title: 'Conquest Mode',
-    description: `OBJECTIVE: Eliminate all enemy orbs.
+const MODE_TUTORIALS = {
+  [GAME_MODE.CONQUEST]: {
+    title: 'Conquest',
+    description: 'Eliminate all enemy orbs. Last player standing wins.',
+    steps: [
+      {
+        id: 'cq-intro',
+        type: 'info',
+        title: 'Conquest Mode',
+        description: `OBJECTIVE: Eliminate all enemy orbs.
 
 • The game starts counting elimination after both players have placed at least one orb.
 • If either player has 0 orbs on the board, the opponent wins.
-• Chain reactions can wipe out clusters of enemy cells in one move.
+• Chain reactions can wipe out clusters of enemy cells.
 • Focus on building stable territory while creating pressure near enemy cells.
-• Catalysts and Amplifiers are key battlegrounds.
-
-Tip: Avoid giving the AI easy chain reactions. Watch their cells nearing critical mass.`,
-    showBoard: true,
-    showConquestDemo: true,
+• Catalysts and Amplifiers are key battlegrounds.`,
+      },
+      {
+        id: 'cq-placement',
+        type: 'interact',
+        title: 'Orb Placement',
+        instruction: 'Click the highlighted cell to place your first orb.',
+        setupBoard: () => {},
+        getTargets: () => [[4, 4]],
+        onComplete: () => 'Good! Your orb has been placed. That cell is now yours.',
+      },
+      {
+        id: 'cq-explosion',
+        type: 'interact',
+        title: 'Critical Mass',
+        instruction: 'This edge cell has 2 orbs. Click it to trigger an explosion!',
+        setupBoard: (b) => { setCell(b, 0, 4, 2, PLAYER.HUMAN); },
+        getTargets: () => [[0, 4]],
+        onComplete: () => 'The cell exploded! Orbs were sent to neighbors, converting them to your color.',
+      },
+      {
+        id: 'cq-chain',
+        type: 'interact',
+        title: 'Chain Reactions',
+        instruction: 'Click to trigger a chain reaction across multiple cells!',
+        setupBoard: (b) => {
+          setCell(b, 2, 2, 3, PLAYER.HUMAN);
+          setCell(b, 2, 3, 3, PLAYER.HUMAN);
+          setCell(b, 2, 4, 3, PLAYER.HUMAN);
+        },
+        getTargets: () => [[2, 2]],
+        onComplete: (len) => `Chain reaction! ${len} cells exploded in sequence.`,
+      },
+      {
+        id: 'cq-catalyst',
+        type: 'interact',
+        title: 'Catalyst',
+        instruction: 'Catalysts have lower critical mass. Click to explode it!',
+        setupBoard: (b) => { b[1][1].owner = PLAYER.HUMAN; b[1][1].orbs = 2; },
+        getTargets: () => [[1, 1]],
+        onComplete: () => 'Catalysts explode with fewer orbs — great for starting chains.',
+        specialHighlight: CELL_TYPE.CATALYST,
+      },
+      {
+        id: 'cq-void',
+        type: 'interact',
+        title: 'Void',
+        instruction: 'Click (0,2) to trigger an explosion toward the Void at (0,3).',
+        setupBoard: (b) => { b[0][3].voidCharge = true; setCell(b, 0, 2, 2, PLAYER.HUMAN); },
+        getTargets: () => [[0, 2]],
+        onComplete: () => 'The Void absorbed the explosion! It is now depleted.',
+      },
+      {
+        id: 'cq-amplifier',
+        type: 'interact',
+        title: 'Amplifier',
+        instruction: 'Amplifiers send 2 orbs per neighbor. Click to trigger!',
+        setupBoard: (b) => { setCell(b, 3, 3, 3, PLAYER.HUMAN); },
+        getTargets: () => [[3, 3]],
+        onComplete: () => 'The Amplifier sent 2 orbs in every direction! Powerful.',
+        specialHighlight: CELL_TYPE.AMPLIFIER,
+      },
+      {
+        id: 'cq-strategy',
+        type: 'info',
+        title: 'Conquest Strategy',
+        description: `• Build stable territory before attacking.
+• Watch enemy cells nearing critical mass.
+• Catalysts trigger fast — use them to start chains.
+• Amplifiers are the most valuable cells.
+• Voids can block a chain route — deplete them when convenient.
+• A single chain reaction can win the game.`,
+      },
+    ],
   },
-  {
-    id: 'cascade',
-    type: 'info',
-    title: 'Cascade Mode',
-    description: `OBJECTIVE: Score the most points through chain reactions.
 
-• Both players get 20 turns each (40 total turns).
+  [GAME_MODE.CASCADE]: {
+    title: 'Cascade',
+    description: 'Chain reactions score points. 20 turns each. Highest score wins.',
+    steps: [
+      {
+        id: 'ca-intro',
+        type: 'info',
+        title: 'Cascade Mode',
+        description: `OBJECTIVE: Score the most points through chain reactions.
+
+• Both players get 20 turns each (40 total).
 • Each move scores: Max(1, chain length).
-  — No explosion or 1-step = 1 point
+  — No explosion = 1 point
   — 6-step chain = 6 points
-• Highest score after all turns wins. Draws are possible.
-• Cascade rewards planned chain reactions even if they don't eliminate.
-• Long chains are worth more — set up cascades across the board.
-
-Tip: Watch for chains of 10+ — a "CHAIN REACTION: CRITICAL MASS" banner appears!`,
-    showBoard: true,
-    showCascadeDemo: true,
+• Cascade rewards planned chain reactions.
+• Long chains are worth far more than short ones.`,
+      },
+      {
+        id: 'ca-placement',
+        type: 'interact',
+        title: 'Placing Orbs',
+        instruction: 'Click to place an orb and see how scoring works.',
+        setupBoard: () => {},
+        getTargets: () => [[4, 4]],
+        onComplete: () => 'No chain? You still get 1 point. Build chains for higher scores!',
+      },
+      {
+        id: 'ca-explosion',
+        type: 'interact',
+        title: 'Scoring with Explosions',
+        instruction: 'Click this cell to trigger an explosion and earn points.',
+        setupBoard: (b) => { setCell(b, 0, 4, 2, PLAYER.HUMAN); },
+        getTargets: () => [[0, 4]],
+        onComplete: (len) => `That chain scored ${len} point${len > 1 ? 's' : ''}!`,
+      },
+      {
+        id: 'ca-chain',
+        type: 'interact',
+        title: 'High Score Chains',
+        instruction: 'Click to trigger a multi-cell chain for big points!',
+        setupBoard: (b) => {
+          setCell(b, 2, 2, 3, PLAYER.HUMAN);
+          setCell(b, 2, 3, 3, PLAYER.HUMAN);
+          setCell(b, 2, 4, 3, PLAYER.HUMAN);
+        },
+        getTargets: () => [[2, 2]],
+        onComplete: (len) => `${len}-step chain! That scores ${len} points!`,
+      },
+      {
+        id: 'ca-strategy',
+        type: 'info',
+        title: 'Cascade Strategy',
+        description: `• A 10+ chain shows a "CHAIN REACTION: CRITICAL MASS" banner.
+• Score matters more than board control.
+• Plan chains across multiple turns.
+• Use Catalysts for quick chain starts.
+• Amplifiers double your chain potential.
+• The highest single chain often decides the match.`,
+      },
+    ],
   },
-  {
-    id: 'tips',
-    type: 'info',
-    title: 'Pro Tips',
-    description: `CONTROLS:
-  Click — Place orb on selected cell
-  Arrow keys — Navigate board cursor
-  Enter/Space — Place orb at cursor
-  ? or / — Show hint (suggested move)
-  H — Toggle move history
-  M — Toggle sound
 
-STRATEGY:
-  • Catalysts explode sooner — use them to start chains
-  • Amplifiers are the most valuable cells — fight for the center
-  • Voids can block a chain route — deplete them when convenient
-  • A small explosion near an Amplifier can become a large chain
-  • Pressure cells near critical mass to create threats
-  • In Conquest, removing the opponent's last orb wins instantly
-  • In Cascade, a high-scoring chain matters more than board control`,
+  [GAME_MODE.MELTDOWN]: {
+    title: 'Meltdown',
+    description: 'Critical mass thresholds decrease every 5 turns. Survive the decay.',
+    steps: [
+      {
+        id: 'md-intro',
+        type: 'info',
+        title: 'Meltdown Mode',
+        description: `The reactor's containment field is decaying.
+
+EVERY 5 TURNS: System Degradation reduces critical mass of ALL cells by 1 (minimum 1).
+
+This triggers sudden, massive involuntary chain reactions as stable positions cross new thresholds.
+
+WIN CONDITION: Elimination-based. The player who manages pressure best survives.`,
+      },
+      {
+        id: 'md-demo',
+        type: 'interact',
+        title: 'Normal Explosion',
+        instruction: 'Place an orb to see a normal explosion. In Meltdown, the same setup would eventually explode on its own!',
+        setupBoard: (b) => { setCell(b, 0, 4, 2, PLAYER.HUMAN); },
+        getTargets: () => [[0, 4]],
+        onComplete: () => 'Now imagine: after 5 turns, this cell would need 1 fewer orb to explode. After 10 turns, 2 fewer. The whole board becomes volatile.',
+      },
+      {
+        id: 'md-strategy',
+        type: 'info',
+        title: 'Meltdown Strategy',
+        description: `• Track the turn counter — degradation is predictable.
+• Before a degradation event, reduce pressure on your own cells.
+• Force the AI to hold high-pressure cells when degradation hits.
+• Low-orb cells are safe; high-orb cells are ticking bombs.
+• The late game is chaos — build for it.`,
+      },
+    ],
   },
-  {
-    id: 'complete',
-    type: 'info',
-    title: 'You Are Ready!',
-    description: `You have learned all the scenarios in FISSION:
 
-✓ Orb placement and building
-✓ Critical mass and explosions
-✓ Chain reactions
-✓ Catalyst, Void, and Amplifier cells
-✓ Conquest and Cascade modes
+  [GAME_MODE.SINGULARITY]: {
+    title: 'Singularity',
+    description: 'A micro-black hole in the center warps the board.',
+    steps: [
+      {
+        id: 'sg-intro',
+        type: 'info',
+        title: 'Singularity Mode',
+        description: `A micro-black hole has opened at the center of the grid.
 
-Now it's time to play! Apply these skills to defeat the AI.`,
-    isFinal: true,
+The center 2×2 cells (positions 3,3 3,4 4,3 4,4) are replaced by the SINGULARITY.
+
+• The Singularity CANNOT be claimed or place orbs on.
+• Explosions that hit the Singularity are swallowed — orbs do not propagate.
+• At the end of every round, the Singularity pulls 1 orb from every adjacent cell, erasing them.
+
+WIN CONDITION: Elimination-based. Fight for the outer rings while the center is an active hazard.`,
+      },
+      {
+        id: 'sg-demo',
+        type: 'interact',
+        title: 'Singularity in Action',
+        instruction: 'Click this edge cell to trigger an explosion toward the center and watch the Singularity swallow it.',
+        setupBoard: (b) => {
+          for (let r = 3; r <= 4; r++) {
+            for (let c = 3; c <= 4; c++) {
+              b[r][c] = { owner: null, orbs: 0, type: CELL_TYPE.SINGULARITY, voidCharge: false };
+            }
+          }
+          setCell(b, 2, 3, 3, PLAYER.HUMAN);
+        },
+        getTargets: () => [[2, 3]],
+        onComplete: () => 'The explosion hit the Singularity — those orbs were swallowed! The Singularity blocks chain propagation through the center.',
+      },
+      {
+        id: 'sg-strategy',
+        type: 'info',
+        title: 'Singularity Strategy',
+        description: `• The center is dead — don't fight for it.
+• The Singularity drains orbs from adjacent cells every round — avoid stacking orbs next to it.
+• Use the Singularity as a shield: explosions can't pass through it.
+• Fight for the perimeter and corners.
+• The drain affects both players equally — plan around it.`,
+      },
+    ],
   },
-];
 
-const HIGHLIGHT_REGIONS = [
-  { label: 'Corner (CM: 2)', cells: [[0, 0], [0, 7], [7, 0], [7, 7]], color: 'var(--coral)' },
-  { label: 'Edge (CM: 3)', cells: [[0, 1], [0, 2], [0, 4], [0, 5], [0, 6], [1, 0], [1, 7], [2, 0], [2, 7], [3, 0], [3, 7], [4, 0], [4, 7], [5, 0], [5, 7], [6, 0], [6, 7], [7, 1], [7, 2], [7, 3], [7, 5], [7, 6]], color: 'var(--gold)' },
-  { label: 'Interior (CM: 4)', cells: [[1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 1], [3, 2], [3, 3], [3, 4], [3, 5], [3, 6], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6], [5, 1], [5, 2], [5, 3], [5, 4], [5, 5], [5, 6], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5], [6, 6]], color: 'var(--cyan)' },
-];
+  [GAME_MODE.OVERDRIVE]: {
+    title: 'Overdrive',
+    description: 'Chain reactions charge energy for special abilities.',
+    steps: [
+      {
+        id: 'od-intro',
+        type: 'info',
+        title: 'Overdrive Mode',
+        description: `Every chain reaction step charges your ENERGY METER.
 
-function getRegionClass(row, col) {
-  for (const region of HIGHLIGHT_REGIONS) {
-    for (const [r, c] of region.cells) {
-      if (r === row && c === col) return region.color;
-    }
-  }
-  return null;
-}
+ENERGY: Each explosion step = +1 Energy (only chains of 2+ give energy).
+
+ABILITIES (once per turn):
+• STABILIZE (3 Energy): Add +1 critical mass to one of your cells to prevent an explosion.
+• QUANTUM LEAP (5 Energy): Place two orbs at once on your turn.
+
+WIN CONDITION: Follows Cascade scoring (20 turns each). Highest score wins.`,
+      },
+      {
+        id: 'od-demo',
+        type: 'interact',
+        title: 'Building Energy',
+        instruction: 'Trigger a chain reaction to see how energy builds.',
+        setupBoard: (b) => {
+          setCell(b, 2, 2, 3, PLAYER.HUMAN);
+          setCell(b, 2, 3, 3, PLAYER.HUMAN);
+          setCell(b, 2, 4, 3, PLAYER.HUMAN);
+        },
+        getTargets: () => [[2, 2]],
+        onComplete: (len) => `That ${len}-step chain generated ${len - 1} Energy! Build energy to use special abilities.`,
+      },
+      {
+        id: 'od-strategy',
+        type: 'info',
+        title: 'Overdrive Strategy',
+        description: `• Energy only comes from chains of 2+ steps.
+• Stabilize is defensive — use it to prevent your own cells from exploding at bad times.
+• Quantum Leap lets you double-place — great for triggering a chain the AI can't counter.
+• Save 5 energy for Quantum Leap — it's the most powerful ability.
+• In the late game, every orb counts — use abilities wisely.`,
+      },
+    ],
+  },
+
+  [GAME_MODE.BREACH]: {
+    title: 'Breach',
+    description: 'Asymmetric siege. AI controls the core, you control the perimeter.',
+    steps: [
+      {
+        id: 'br-intro',
+        type: 'info',
+        title: 'Breach Mode',
+        description: `An asymmetric game mode with completely different starting positions.
+
+AI (CORAL): Controls the central 4×4 grid with pressurized cells and Amplifiers.
+YOU (CYAN): Control the entire outer perimeter with 1 orb per cell.
+
+WIN CONDITIONS:
+• AI wins if it converts even ONE corner cell.
+• You win if you eliminate ALL AI orbs from the core.
+• Standard elimination also applies.
+
+The AI acts as an exploding infection trying to breach outward.
+You act as containment trying to collapse inward.`,
+      },
+      {
+        id: 'br-demo',
+        type: 'interact',
+        title: 'Breach Battlefield',
+        instruction: 'Click one of your perimeter cells to place an orb and push inward.',
+        setupBoard: (b) => {
+          for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+              const isPerimeter = r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1;
+              const isCore = r >= 2 && r <= 5 && c >= 2 && c <= 5;
+              if (isCore) { b[r][c].owner = PLAYER.AI; b[r][c].orbs = 2; }
+              if (isPerimeter) { b[r][c].owner = PLAYER.HUMAN; b[r][c].orbs = 1; }
+            }
+          }
+        },
+        getTargets: () => [[0, 0], [0, 7], [7, 0], [7, 7]],
+        onComplete: () => 'Every orb counts in Breach. You must collapse the AI core before they reach your corners!',
+      },
+      {
+        id: 'br-strategy',
+        type: 'info',
+        title: 'Breach Strategy',
+        description: `• Defend your corners at all costs — one AI orb there and you lose.
+• Push inward methodically — chain reactions are your best weapon.
+• The AI has Amplifiers in the core — be careful attacking them directly.
+• Use the perimeter to build pressure before striking inward.
+• Focus fire: collapsing one side of the core is better than spreading thin.`,
+      },
+    ],
+  },
+};
+
+const MODE_LIST = Object.entries(MODE_TUTORIALS).map(([id, m]) => ({ id, ...m }));
 
 export default function Tutorial({ onClose }) {
+  const [screen, setScreen] = useState('select');
+  const [selectedMode, setSelectedMode] = useState(null);
   const [stepIndex, setStepIndex] = useState(0);
-  const [board, setBoard] = useState(() => buildBoard(STEPS[0]));
+  const [board, setBoard] = useState(() => makeEmptyBoard());
   const [explodingCells, setExplodingCells] = useState(new Set());
   const [phase, setPhase] = useState('ready');
   const [message, setMessage] = useState('');
@@ -255,9 +396,9 @@ export default function Tutorial({ onClose }) {
 
   const busyRef = useRef(false);
   const boardRef = useRef(board);
-  const stepRef = useRef(STEPS[0]);
+  const stepRef = useRef(null);
+
   boardRef.current = board;
-  stepRef.current = STEPS[stepIndex];
 
   useEffect(() => {
     return () => { busyRef.current = true; };
@@ -271,46 +412,60 @@ export default function Tutorial({ onClose }) {
     return () => clearInterval(id);
   }, [phase]);
 
-  function goToStep(index) {
-    const step = STEPS[index];
-    const needsBoard = step.type === 'interact' || step.showBoard;
-    if (needsBoard) {
-      setBoard(buildBoard(step));
+  function selectMode(modeId) {
+    const tut = MODE_TUTORIALS[modeId];
+    if (!tut) return;
+    setSelectedMode(modeId);
+    setStepIndex(0);
+    setScreen('learning');
+    setPhase('ready');
+    setMessage('');
+    setExplodingCells(new Set());
+    busyRef.current = false;
+    const firstStep = tut.steps[0];
+    stepRef.current = firstStep;
+    if (firstStep.type === 'interact' || firstStep.showBoard) {
+      const b = buildBoard(firstStep);
+      setBoard(b);
+      boardRef.current = b;
     }
-    boardRef.current = needsBoard ? buildBoard(step) : boardRef.current;
+  }
+
+  function goToStep(index) {
+    const tut = MODE_TUTORIALS[selectedMode];
+    if (!tut) return;
+    const step = tut.steps[index];
+    if (!step) return;
     stepRef.current = step;
     setStepIndex(index);
     setPhase('ready');
     setMessage('');
     setExplodingCells(new Set());
     busyRef.current = false;
+    if (step.type === 'interact' || step.showBoard) {
+      const b = buildBoard(step);
+      setBoard(b);
+      boardRef.current = b;
+    }
   }
 
   async function handleCellClick(row, col) {
     const step = stepRef.current;
-    if (busyRef.current || step.type !== 'interact') return;
-
+    if (busyRef.current || !step || step.type !== 'interact') return;
     const targets = step.getTargets();
     if (!targets.some(([r, c]) => r === row && c === col)) return;
-
     busyRef.current = true;
     setPhase('animating');
-
     const currentBoard = boardRef.current;
     const result = placeOrb(currentBoard, row, col, PLAYER.HUMAN);
-    if (!result) {
-      busyRef.current = false;
-      setPhase('ready');
-      return;
-    }
-
-    for (const s of result.steps) {
+    if (!result) { busyRef.current = false; setPhase('ready'); return; }
+    const plan = getAnimationPlan(result.steps);
+    for (const s of plan.frames) {
       if (busyRef.current === false) return;
       setExplodingCells(s.explodingCells);
       setBoard(s.boardSnapshot);
-      await wait(STEP_DELAY);
+      await wait(plan.delay);
     }
-
     if (busyRef.current === false) return;
     setExplodingCells(new Set());
     setBoard(result.board);
@@ -319,12 +474,47 @@ export default function Tutorial({ onClose }) {
     setMessage(step.onComplete(result.chainLength));
   }
 
-  const step = STEPS[stepIndex];
+  if (screen === 'select') {
+    return (
+      <div className="tutorial-overlay" role="dialog" aria-modal="true">
+        <div className="tutorial-panel glass-panel">
+          <div className="tutorial-header">
+            <div>
+              <h2 className="tutorial-step-title">Learn a Game Mode</h2>
+            </div>
+            <button className="ghost-button" onClick={onClose}>Close</button>
+          </div>
+          <p className="tutorial-subtitle" style={{ marginBottom: '0.5rem' }}>
+            Choose a mode to learn. Each tutorial covers the rules, mechanics, and strategy.
+          </p>
+          <div className="tutorial-mode-grid">
+            {MODE_LIST.map((mode) => (
+              <button
+                key={mode.id}
+                className="tutorial-mode-card"
+                onClick={() => selectMode(mode.id)}
+              >
+                <strong className="tutorial-mode-title">{mode.title}</strong>
+                <p className="tutorial-mode-desc">{mode.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const tut = selectedMode ? MODE_TUTORIALS[selectedMode] : null;
+  if (!tut) return null;
+
+  const step = tut.steps[stepIndex];
+  if (!step) return null;
+
   const isInteract = step.type === 'interact';
   const targets = isInteract ? step.getTargets() : [];
   const isTargetCell = (r, c) => targets.some(([tr, tc]) => tr === r && tc === c);
   const showBoard = step.showBoard || isInteract;
-  const totalSteps = STEPS.length;
+  const totalSteps = tut.steps.length;
   const stepNumber = stepIndex + 1;
   const interactionDone = phase === 'done';
 
@@ -333,22 +523,20 @@ export default function Tutorial({ onClose }) {
       <div className="tutorial-panel glass-panel">
         <div className="tutorial-header">
           <div>
-            <span className="tutorial-step-badge">STEP {stepNumber}/{totalSteps}</span>
+            <span className="tutorial-step-badge">
+              {tut.title} · STEP {stepNumber}/{totalSteps}
+            </span>
             <h2 className="tutorial-step-title">{step.title}</h2>
           </div>
-          <button className="ghost-button" onClick={onClose}>Close</button>
+          <button className="ghost-button" onClick={() => setScreen('select')}>Modes</button>
         </div>
-
-        {step.subtitle && (
-          <p className="tutorial-subtitle">{step.subtitle}</p>
-        )}
 
         <div className="tutorial-progress">
           <div className="tutorial-progress-track">
             <div className="tutorial-progress-fill" style={{ width: `${(stepNumber / totalSteps) * 100}%` }} />
           </div>
           <div className="tutorial-dots">
-            {STEPS.map((s, i) => (
+            {tut.steps.map((s, i) => (
               <span
                 key={s.id}
                 className={`tutorial-dot ${i === stepIndex ? 'tutorial-dot-active' : ''} ${i < stepIndex ? 'tutorial-dot-done' : ''}`}
@@ -375,19 +563,13 @@ export default function Tutorial({ onClose }) {
                 {board.map((rowData, rowIndex) =>
                   rowData.map((cell, colIndex) => {
                     const isTarget = isTargetCell(rowIndex, colIndex);
-                    const regionColor = step.highlightRegions ? getRegionClass(rowIndex, colIndex) : null;
                     const isSpecialTarget = step.specialHighlight && cell.type === step.specialHighlight && isTarget;
                     const cellIsValid = isTarget && !interactionDone && phase !== 'animating';
                     const cellIsHint = isTarget && !interactionDone;
 
                     return (
                       <div key={`${rowIndex}-${colIndex}`} className="tutorial-cell-wrapper">
-                        {step.highlightRegions && regionColor && (
-                          <div className="tutorial-region-border" style={{ '--region-color': regionColor }} />
-                        )}
-                        {isSpecialTarget && (
-                          <div className="tutorial-special-glow" />
-                        )}
+                        {isSpecialTarget && <div className="tutorial-special-glow" />}
                         <Cell
                           cell={cell}
                           row={rowIndex}
@@ -401,50 +583,12 @@ export default function Tutorial({ onClose }) {
                           isLastMove={false}
                           isPlacing={false}
                         />
-                        {step.highlightRegions && (rowIndex === 0 || rowIndex === 7 || colIndex === 0 || colIndex === 7) && (
-                          <span className="tutorial-edge-marker" />
-                        )}
                       </div>
                     );
                   })
                 )}
               </div>
             </div>
-
-            {step.highlightRegions && (
-              <div className="tutorial-legend-bar">
-                {HIGHLIGHT_REGIONS.map((r) => (
-                  <span key={r.label} className="tutorial-legend-item">
-                    <span className="tutorial-legend-swatch" style={{ background: r.color }} />
-                    {r.label}
-                  </span>
-                ))}
-                <span className="tutorial-legend-item">
-                  <span className="tutorial-legend-swatch tutorial-legend-special" />
-                  Catalyst / Void / Amplifier
-                </span>
-              </div>
-            )}
-
-            {step.showConquestDemo && (
-              <div className="tutorial-conquest-demo">
-                <div className="tutorial-demo-info">
-                  <strong>Conquest Scenario:</strong> Two players battle for board control.
-                  Each orb you place brings you closer to eliminating your opponent.
-                  Chain reactions can wipe out entire clusters — aim for high-pressure setups.
-                </div>
-              </div>
-            )}
-
-            {step.showCascadeDemo && (
-              <div className="tutorial-conquest-demo">
-                <div className="tutorial-demo-info">
-                  <strong>Cascade Scenario:</strong> Every move scores points based on chain length.
-                  A move with no explosion scores 1 point. A 10-cell chain scores 10.
-                  Plan chains that cascade across the board for maximum points!
-                </div>
-              </div>
-            )}
 
             {isInteract && !interactionDone && phase !== 'animating' && (
               <div className="tutorial-instruction">
@@ -469,7 +613,7 @@ export default function Tutorial({ onClose }) {
         )}
 
         {isInteract && !interactionDone && phase !== 'animating' && (
-          <p className="tutorial-hint-text">{step.hint}</p>
+          <p className="tutorial-hint-text">{step.hint || 'Click the highlighted cell.'}</p>
         )}
 
         {showBoard && !isInteract && (
@@ -483,25 +627,22 @@ export default function Tutorial({ onClose }) {
         )}
 
         <div className="tutorial-footer">
-          <button
-            className="ghost-button"
-            onClick={() => goToStep(stepIndex - 1)}
-            disabled={stepIndex === 0}
-          >
-            Prev
-          </button>
-
-          <div className="tutorial-footer-center">
-            {step.id === 'welcome' && (
-              <button className="primary-button" onClick={() => goToStep(1)}>
-                Begin Tutorial
-              </button>
-            )}
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              className="ghost-button"
+              onClick={() => goToStep(stepIndex - 1)}
+              disabled={stepIndex === 0}
+            >
+              Prev
+            </button>
+            <button className="ghost-button" onClick={() => setScreen('select')}>
+              All Modes
+            </button>
           </div>
 
-          {stepIndex >= STEPS.length - 1 ? (
-            <button className="primary-button" onClick={onClose}>
-              Play Game
+          {stepIndex >= totalSteps - 1 ? (
+            <button className="primary-button" onClick={() => setScreen('select')}>
+              More Modes
             </button>
           ) : (!isInteract || interactionDone) ? (
             <button className="primary-button" onClick={() => goToStep(stepIndex + 1)}>

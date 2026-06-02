@@ -166,6 +166,18 @@ export default function Game({ mode, difficulty, onGameOver, onMainMenu }) {
   }, [game.isAnimating, game.explodingCells, sound]);
 
   useEffect(() => {
+    if (!game.singularityDrain) return;
+    const { human, ai } = game.singularityDrain;
+    const parts = [];
+    if (human > 0) parts.push(`${human} of your orbs`);
+    if (ai > 0) parts.push(`${ai} AI orbs`);
+    if (parts.length > 0) {
+      setToast(`Singularity drained ${parts.join(' and ')}`);
+      setTimeout(() => setToast(null), 2000);
+    }
+  }, [game.singularityDrain]);
+
+  useEffect(() => {
     if (!game.winner) {
       sound.startAmbient();
     } else {

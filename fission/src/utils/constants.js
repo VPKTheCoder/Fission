@@ -8,11 +8,16 @@ export const CELL_TYPE = {
   CATALYST: 'catalyst',
   VOID: 'void',
   AMPLIFIER: 'amplifier',
+  SINGULARITY: 'singularity',
 };
 
 export const GAME_MODE = {
   CONQUEST: 'conquest',
   CASCADE: 'cascade',
+  MELTDOWN: 'meltdown',
+  SINGULARITY: 'singularity',
+  OVERDRIVE: 'overdrive',
+  BREACH: 'breach',
 };
 
 export const DIFFICULTY = {
@@ -22,6 +27,11 @@ export const DIFFICULTY = {
 };
 
 export const CASCADE_TURNS_EACH = 20;
+export const MELTDOWN_DEGRADE_INTERVAL = 5;
+export const SINGULARITY_CELLS = [[3, 3], [3, 4], [4, 3], [4, 4]];
+export const OVERDRIVE_STABILIZE_COST = 3;
+export const OVERDRIVE_QUANTUM_COST = 5;
+export const BREACH_AI_CENTER_SIZE = 4;
 
 export const SPECIAL_CELLS = {
   CATALYST: [[1, 1], [1, 6], [6, 1], [6, 6]],

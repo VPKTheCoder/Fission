@@ -9,14 +9,6 @@ const DIFFICULTIES = [
 export default function DifficultySelect({ onSelect, onBack }) {
   return (
     <main className="screen select-screen">
-      <div className="top-rail" aria-hidden="true">
-        <span className="brand-mark">f</span>
-        <nav>
-          <span>Signal</span>
-          <span>AI</span>
-          <span>Depth</span>
-        </nav>
-      </div>
       <button className="ghost-button back-button" onClick={onBack}>Back</button>
       <div className="select-heading">
         <span className="eyebrow">Choose opposition</span>

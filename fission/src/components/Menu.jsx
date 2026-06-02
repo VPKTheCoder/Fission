@@ -10,14 +10,7 @@ const LEGEND = [
 export default function Menu({ onPlay, onTutorial }) {
   return (
     <main className="screen menu-screen">
-      <div className="top-rail" aria-hidden="true">
-        <span className="brand-mark">f</span>
-        <nav>
-          <span>Reactor</span>
-          <span>Cells</span>
-          <span>Strategy</span>
-        </nav>
-      </div>
+
       <section className="menu-panel">
         <div className="hero-core" aria-hidden="true">
           <div className="core-inner" />
@@ -31,7 +24,7 @@ export default function Menu({ onPlay, onTutorial }) {
           <h1>FISSION</h1>
           <p>Territory strategy. Chain reactions. Three cells that change everything.</p>
         </div>
-        <button className="primary-button" onClick={onPlay}>Play</button>
+        <button className="primary-button play-button" onClick={onPlay}>Play</button>
         <button className="tutorial-button" onClick={onTutorial}>Tutorial</button>
         <div className="legend-row">
           {LEGEND.map((item) => (
