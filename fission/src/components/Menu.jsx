@@ -20,7 +20,7 @@ export default function Menu({ onPlay, onTutorial }) {
           <div className="core-orbits" />
         </div>
         <div className="title-block">
-          <span className="eyebrow">Chain Reaction Strategy</span>
+          <span className="eyebrow">By Vansh Pravin Khadse / VPKTheCoder on Github</span>
           <h1>FISSION</h1>
           <p>Territory strategy. Chain reactions. Three cells that change everything.</p>
         </div>
