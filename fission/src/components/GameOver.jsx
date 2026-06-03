@@ -42,9 +42,9 @@ export default function GameOver({ winner, mode, isTwoPlayer = false, scores, st
     const verb = winner === 'draw' ? 'drew' : 'won';
     const text = `${who} ${verb} at FISSION!\n` +
       `Mode: ${mode.toUpperCase()}\n` +
-      (mode === GAME_MODE.CASCADE ? `Score: ${scores?.human} - ${scores?.ai}\n` : `Result: ${title}\n`) +
+      ((mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) ? `Score: ${scores?.human} - ${scores?.ai}\n` : `Result: ${title}\n`) +
       (stats ? `Longest chain: ${stats.longestChain}\n` : '') +
-      `Play at: https://fission-game.vercel.app`;
+      `Play at: ${import.meta.env.VITE_APP_URL || window.location.origin}`;
 
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
@@ -63,7 +63,7 @@ export default function GameOver({ winner, mode, isTwoPlayer = false, scores, st
     <main className="screen gameover-screen">
       <section className={`gameover-panel ${resultClass}`}>
         <h2>{title}</h2>
-        {mode === GAME_MODE.CASCADE && scores && (
+        {(mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) && scores && (
           <p className="final-score">
             {isTwoPlayer ? `P1: ${scores.human} | P2: ${scores.ai}` : `YOU: ${scores.human} | AI: ${scores.ai}`}
           </p>

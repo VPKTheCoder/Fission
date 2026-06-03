@@ -41,7 +41,7 @@ function collectCriticalCells(board, meltdownBonus) {
 }
 
 export function processExplosions(inputBoard, meltdownBonus = 0) {
-  const board = inputBoard;
+  const board = cloneBoard(inputBoard);
   const queue = collectCriticalCells(board, meltdownBonus);
   const steps = [];
   let chainLength = 0;
@@ -173,13 +173,6 @@ export function getValidMoves(board, player) {
 
 export function getOpponent(player) {
   return player === PLAYER.HUMAN ? PLAYER.AI : PLAYER.HUMAN;
-}
-
-export function isSingularityCell(row, col) {
-  for (const [r, c] of SINGULARITY_CELLS) {
-    if (r === row && c === col) return true;
-  }
-  return false;
 }
 
 export function getMeltdownBonus(turn) {

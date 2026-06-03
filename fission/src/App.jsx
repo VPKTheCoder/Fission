@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Menu from './components/Menu.jsx';
 import ModeSelect from './components/ModeSelect.jsx';
 import PlayerTypeSelect from './components/PlayerTypeSelect.jsx';
@@ -10,6 +10,16 @@ import Tutorial from './components/Tutorial.jsx';
 import { useSound } from './hooks/useSound.js';
 import { GAME_MODE, DIFFICULTY, PLAYER } from './utils/constants.js';
 
+const SCREEN_TITLES = {
+  menu: 'FISSION — Chain Reaction Territory Strategy Game',
+  mode: 'Select Mode | FISSION',
+  playertype: 'Choose Opponent | FISSION',
+  difficulty: 'Select Difficulty | FISSION',
+  game: 'Playing | FISSION',
+  gameover: 'Game Over | FISSION',
+  tutorial: 'Tutorial | FISSION',
+};
+
 export default function App() {
   const [screen, setScreen] = useState('menu');
   const [mode, setMode] = useState(GAME_MODE.CONQUEST);
@@ -17,10 +27,31 @@ export default function App() {
   const [isTwoPlayer, setIsTwoPlayer] = useState(false);
   const [gameResult, setGameResult] = useState({ winner: null, scores: null, stats: null });
   const [gameKey, setGameKey] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
+  const statusTimeout = useRef(null);
+  const mainRef = useRef(null);
   const sound = useSound();
 
   const isVictory = screen === 'gameover' && gameResult.winner === PLAYER.HUMAN;
   const isThinking = false;
+
+  useEffect(() => {
+    document.title = SCREEN_TITLES[screen] || SCREEN_TITLES.menu;
+  }, [screen]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (el) {
+      const focusable = el.querySelector('h1, h2, button, [tabindex]');
+      if (focusable) focusable.focus();
+    }
+  }, [screen]);
+
+  function announce(message, duration = 3000) {
+    if (statusTimeout.current) clearTimeout(statusTimeout.current);
+    setStatusMessage(message);
+    statusTimeout.current = setTimeout(() => setStatusMessage(''), duration);
+  }
 
   function getAmbiance() {
     if (screen === 'game') return 'game';
@@ -52,14 +83,21 @@ export default function App() {
   }
 
   const handleGameOver = useCallback((winner, scores, stats) => {
-    if (winner === PLAYER.HUMAN) {
+    if (winner === 'draw') {
+      announce('Draw! The game ended in a stalemate.');
+    } else if (winner === PLAYER.HUMAN) {
+      announce('Victory! You won the game!');
+      sound.playVictory();
+    } else if (isTwoPlayer) {
+      announce('Player 2 wins!');
       sound.playVictory();
     } else {
+      announce('Defeat! The AI won the game.');
       sound.playDefeat();
     }
     setGameResult({ winner, scores, stats });
     setScreen('gameover');
-  }, [sound]);
+  }, [sound, isTwoPlayer]);
 
   function playAgain() {
     sound.playClick();
@@ -95,6 +133,7 @@ export default function App() {
         isTwoPlayer={isTwoPlayer}
         onGameOver={handleGameOver}
         onMainMenu={goToMenu}
+        onAnnounce={announce}
       />
     );
   } else if (screen === 'gameover') {
@@ -120,8 +159,11 @@ export default function App() {
   return (
     <>
       <ParticleCanvas ambiance={getAmbiance()} victory={isVictory} thinking={isThinking} />
-      <div className="page-transition" key={screen}>
+      <div className="page-transition" key={screen} ref={mainRef}>
         {content}
+      </div>
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusMessage}
       </div>
     </>
   );

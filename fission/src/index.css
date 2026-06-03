@@ -44,6 +44,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background:
     radial-gradient(circle at 14% 8%, rgba(255, 241, 211, 0.2), transparent 18rem),
     radial-gradient(circle at 72% 14%, rgba(69, 223, 247, 0.13), transparent 22rem),
@@ -771,6 +774,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: clamp(2px, 0.45vmin, 4px);
+  touch-action: manipulation;
   width: min(90vmin, calc(100svh - 9.8rem), 580px);
   height: min(90vmin, calc(100svh - 9.8rem), 580px);
   min-width: 288px;
@@ -1502,6 +1506,67 @@ h1 {
   0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.2); }
   40% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.5); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes noop { }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .core-orbits::before,
+  .core-orbits::after {
+    animation: none !important;
+  }
+  .cell-cursor {
+    animation: none !important;
+  }
+  .shaking {
+    animation: none !important;
+  }
+  .page-transition {
+    animation: none !important;
+  }
+  .cell-catalyst {
+    animation: none !important;
+  }
+  .cell-singularity {
+    animation: none !important;
+  }
+  .cell-icon svg,
+  .cell-void:not(.cell-void-depleted) .cell-icon svg,
+  .cell-amplifier .cell-icon,
+  .cell-singularity .cell-icon svg {
+    animation: none !important;
+  }
+  .particle-canvas {
+    display: none !important;
+  }
+  .chain-banner,
+  .toast {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .tutorial-special-glow {
+    animation: none !important;
+  }
 }
 
 @media (max-width: 720px) {

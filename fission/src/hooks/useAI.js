@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PLAYER } from '../utils/constants.js';
 import { getAIMove } from '../utils/aiEngine.js';
 
 export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimating, winner, onMove }) {
   const [isThinking, setIsThinking] = useState(false);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
 
   useEffect(() => {
     let cancelled = false;
@@ -20,7 +22,7 @@ export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimat
 
       window.setTimeout(() => {
         if (!cancelled) {
-          onMove(move);
+          onMoveRef.current(move);
           setIsThinking(false);
         }
       }, delay);
@@ -31,7 +33,7 @@ export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimat
     return () => {
       cancelled = true;
     };
-  }, [board, currentPlayer, difficulty, mode, scores, isAnimating, winner, onMove]);
+  }, [board, currentPlayer, difficulty, mode, scores, isAnimating, winner]);
 
   return { isThinking };
 }

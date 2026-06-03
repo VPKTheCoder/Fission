@@ -35,7 +35,15 @@ function OrbEnergyBar({ count, side }) {
 }
 
 export default function HUD({ mode, turn, scores, counts, currentPlayer, isThinking, isTwoPlayer = false, soundEnabled, onToggleSound }) {
-  const modeLabel = mode === GAME_MODE.CASCADE ? 'CASCADE' : 'CONQUEST';
+  const MODE_LABELS = {
+    [GAME_MODE.CONQUEST]: 'CONQUEST',
+    [GAME_MODE.CASCADE]: 'CASCADE',
+    [GAME_MODE.MELTDOWN]: 'MELTDOWN',
+    [GAME_MODE.SINGULARITY]: 'SINGULARITY',
+    [GAME_MODE.OVERDRIVE]: 'OVERDRIVE',
+    [GAME_MODE.BREACH]: 'BREACH',
+  };
+  const modeLabel = MODE_LABELS[mode] || 'CONQUEST';
   const isHuman = currentPlayer === PLAYER.HUMAN;
 
   const [msgIndex, setMsgIndex] = useState(0);
@@ -83,7 +91,7 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
             <span className="mode-label">{modeLabel} · TURN {turn + 1}</span>
           </>
         )}
-        {mode === GAME_MODE.CASCADE && !isThinking && (
+        {(mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) && !isThinking && (
           <span className="score-line">
             {isTwoPlayer ? `P1: ${scores.human} | P2: ${scores.ai}` : `YOU: ${scores.human} | AI: ${scores.ai}`}
           </span>
@@ -101,6 +109,7 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
           className={`sound-toggle ${soundEnabled ? '' : 'muted'}`}
           onClick={onToggleSound}
           aria-label={soundEnabled ? 'Mute sounds' : 'Enable sounds'}
+          aria-pressed={!soundEnabled}
           title="Toggle sound (M)"
         >
           <svg viewBox="0 0 20 20" width="14" height="14" fill="none">

@@ -30,7 +30,7 @@ function getHint(board, mode) {
   return bestMove;
 }
 
-export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver, onMainMenu }) {
+export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver, onMainMenu, onAnnounce }) {
   const sound = useSound();
   const [moveHistory, setMoveHistory] = useState([]);
   const [lastMove, setLastMove] = useState(null);
@@ -42,9 +42,11 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
   const [cursorPos, setCursorPos] = useState({ row: 4, col: 4 });
   const [hintCell, setHintCell] = useState(null);
   const [placingCell, setPlacingCell] = useState(null);
+  const [statusMessage, setStatusMessage] = useState('');
   const statsRef = useRef({ longestChain: 0, cellsConverted: 0, specialCells: 0, totalTurns: 0 });
   const prevBoardRef = useRef(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const gameRef = useRef(null);
 
   const wrappedOnGameOver = useCallback((winner, scores) => {
     const finalStats = { ...statsRef.current, totalTurns: statsRef.current.totalTurns };
@@ -52,10 +54,14 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
   }, [onGameOver]);
 
   const game = useGame({ mode, onGameOver: wrappedOnGameOver, isTwoPlayer });
+  gameRef.current = game;
+
   const isHumanTurn = Boolean(game && !game.isAnimating && (isTwoPlayer || game.currentPlayer === PLAYER.HUMAN));
 
   const handleAIMoveWrapper = useCallback(async (move) => {
-    const result = await game.handleAIMove(move);
+    const g = gameRef.current;
+    if (!g) return false;
+    const result = await g.handleAIMove(move);
     if (result && move) {
       setLastMove({ row: move.row, col: move.col });
       setMoveHistory((h) => [...h, {
@@ -64,7 +70,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
       setHintCell(null);
     }
     return result;
-  }, [game.handleAIMove]);
+  }, []);
 
   const { isThinking } = useAI(isTwoPlayer ? {} : {
     board: game.board,
@@ -78,11 +84,13 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
   });
 
   const handleCellClick = useCallback(async (row, col) => {
-    const player = game.currentPlayer;
-    if (!canPlace(game.board, row, col, player)) return false;
+    const g = gameRef.current;
+    if (!g) return false;
+    const player = g.currentPlayer;
+    if (!canPlace(g.board, row, col, player)) return false;
     setPlacingCell({ row, col });
     sound.playPlace();
-    const result = await game.handleCellClick(row, col);
+    const result = await g.handleCellClick(row, col);
     if (result) {
       setLastMove({ row, col });
       setMoveHistory((h) => [...h, {
@@ -93,7 +101,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
     }
     setPlacingCell(null);
     return result;
-  }, [game, sound]);
+  }, [sound]);
 
   useEffect(() => {
     if (game.lastChainLength <= 0) return;
@@ -116,12 +124,14 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
     statsRef.current.totalTurns += 1;
 
     if (len >= 10) {
-      setChainBanner('CHAIN REACTION: CRITICAL MASS');
+      setChainBanner(`CHAIN REACTION: ${len} steps`);
       setTimeout(() => setChainBanner(null), 2500);
     }
     if (len >= 3) {
       setShaking(true);
       setTimeout(() => setShaking(false), 400);
+      setStatusMessage(`Chain reaction: ${len} explosions!`);
+      setTimeout(() => setStatusMessage(''), 2500);
     }
     if (mode === GAME_MODE.CASCADE && game.scores) {
       const humanScore = game.scores[PLAYER.HUMAN];
@@ -133,11 +143,34 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
   }, [game.lastChainLength, game.scores, mode]);
 
   useEffect(() => {
+    if (game.winner) {
+      const label = game.winner === 'draw' ? 'Draw' : game.winner === PLAYER.HUMAN ? (isTwoPlayer ? 'Player 1 wins' : 'Victory') : (isTwoPlayer ? 'Player 2 wins' : 'Defeat');
+      document.title = `${label} | FISSION`;
+    } else if (isThinking) {
+      document.title = 'AI is thinking... | FISSION';
+    } else if (isTwoPlayer) {
+      document.title = `Player ${game.currentPlayer === PLAYER.HUMAN ? '1' : '2'}'s turn | FISSION`;
+    } else {
+      document.title = game.currentPlayer === PLAYER.HUMAN ? 'Your turn | FISSION' : 'AI is thinking... | FISSION';
+    }
+  }, [game.currentPlayer, game.winner, isThinking, isTwoPlayer]);
+
+  useEffect(() => {
+    if (!isTwoPlayer && game.currentPlayer === PLAYER.AI && !game.isAnimating && !game.winner) {
+      setStatusMessage('AI is thinking...');
+    } else if (!game.winner) {
+      const who = isTwoPlayer ? (game.currentPlayer === PLAYER.HUMAN ? 'Player 1' : 'Player 2') : 'Your';
+      setStatusMessage(`${who} turn`);
+      if (onAnnounce) onAnnounce(`${who} turn`);
+    }
+  }, [game.currentPlayer, game.isAnimating, game.winner, isTwoPlayer, onAnnounce]);
+
+  useEffect(() => {
     if (!game.board || !prevBoardRef.current) {
       prevBoardRef.current = game.board;
       return;
     }
-    if (game.currentPlayer === PLAYER.AI) return;
+    if (!isTwoPlayer && game.currentPlayer === PLAYER.AI) return;
 
     const prev = prevBoardRef.current;
     const curr = game.board;
@@ -147,9 +180,10 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
       for (let c = 0; c < 8; c++) {
         const pc = prev[r][c];
         const cc = curr[r][c];
-        if (cc.owner === PLAYER.HUMAN && pc.owner !== null && pc.owner !== PLAYER.HUMAN) {
+        const ownerChanged = cc.owner !== pc.owner && cc.owner !== null && pc.owner !== null;
+        if (ownerChanged) {
           converted++;
-          if (cc.type !== 'normal') special++;
+          if (cc.type !== CELL_TYPE.NORMAL) special++;
         }
       }
     }
@@ -158,7 +192,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
       statsRef.current.specialCells += special;
     }
     prevBoardRef.current = game.board;
-  }, [game.board, game.currentPlayer]);
+  }, [game.board, game.currentPlayer, isTwoPlayer]);
 
   useEffect(() => {
     if (game.isAnimating && game.explodingCells.size > 0) {
@@ -279,15 +313,19 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
       />
       <button className="ghost-button menu-button" onClick={onMainMenu}>Main Menu</button>
 
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusMessage}
+      </div>
+
       {chainBanner && (
-        <div className="chain-banner" key={chainBanner}>{chainBanner}</div>
+        <div className="chain-banner" key={chainBanner} role="status">{chainBanner}</div>
       )}
       {toast && (
-        <div className="toast" key={toast}>{toast}</div>
+        <div className="toast" key={toast} role="status">{toast}</div>
       )}
 
       {showHistory && (
-        <div className="terminal-overlay">
+        <div className="terminal-overlay" role="region" aria-label="Move history" aria-expanded={showHistory}>
           <div className="term-line" style={{ color: 'var(--gold)', fontWeight: 800, marginBottom: '0.3rem' }}>
             MOVE HISTORY
           </div>
@@ -312,7 +350,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
       )}
 
       {showDev && (
-        <div className="dev-panel">
+        <div className="dev-panel" role="region" aria-label="Developer panel" aria-expanded={showDev}>
           <div className="dev-row">
             <span className="dev-label">MODE</span>
             <span className="dev-value">{mode.toUpperCase()}</span>
