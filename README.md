@@ -3,6 +3,7 @@
 FISSION is a two-player territory strategy game about controlling an 8x8 deep-space reactor grid. Human and AI players place orbs, trigger critical-mass explosions, and flip neighboring territory through chain reactions. Six distinct game modes transform the strategic landscape with special mechanics, while a Symbolic AI engine using minimax with alpha-beta pruning provides intelligent opponents across three difficulty levels.
 
 ## How to play
+Go to https://fisson.vercel.app/ to play the game. There are tutorials there which will guide you to play it.
 
 Click any empty cell or any cell you already own to place one orb. Turns alternate between you and the AI (or human opponent in 2-Player mode). The game plays out differently depending on which mode you select. For a complete player-facing rules document with strategies and tips, see [GAMEPLAY_GUIDE.md](./GAMEPLAY_GUIDE.md).
 
@@ -121,10 +122,8 @@ npm install
 npm run dev
 ```
 
-## Deploy
+## Deploy locally
 
 ```bash
 npm run build
 ```
-
-Deploy `/dist` to Vercel.
