@@ -4,6 +4,7 @@ import HUD from './HUD.jsx';
 import { useAI } from '../hooks/useAI.js';
 import { useGame } from '../hooks/useGame.js';
 import { useSound } from '../hooks/useSound.js';
+import AbilityBar from './AbilityBar.jsx';
 import { GAME_MODE, PLAYER, CELL_TYPE } from '../utils/constants.js';
 import { getValidMoves, getCriticalMass, canPlace } from '../utils/gameLogic.js';
 
@@ -81,6 +82,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
     isAnimating: game.isAnimating,
     winner: game.winner,
     onMove: handleAIMoveWrapper,
+    overdriveEnergy: game.overdriveEnergy,
   });
 
   const handleCellClick = useCallback(async (row, col) => {
@@ -298,6 +300,17 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
         isTwoPlayer={isTwoPlayer}
         soundEnabled={soundEnabled}
         onToggleSound={() => { sound.setMuted((v) => !v); setSoundEnabled((v) => !v); }}
+        overdriveEnergy={game.overdriveEnergy}
+      />
+      <AbilityBar
+        mode={mode}
+        energy={game.overdriveEnergy}
+        currentPlayer={game.currentPlayer}
+        usedAbility={game.usedAbility}
+        activeAbility={game.activeAbility}
+        onUseAbility={(ability) => game.useAbility(ability, isTwoPlayer ? game.currentPlayer : PLAYER.HUMAN)}
+        disabled={game.isAnimating || isThinking || !!game.winner}
+        isTwoPlayer={isTwoPlayer}
       />
       <Board
         board={game.board}
@@ -310,6 +323,8 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
         hintCell={hintCell}
         placingCell={placingCell}
         isTwoPlayer={isTwoPlayer}
+        activeAbility={game.activeAbility}
+        stabilizeTarget={game.stabilizeTarget}
       />
       <button className="ghost-button menu-button" onClick={onMainMenu}>Main Menu</button>
 

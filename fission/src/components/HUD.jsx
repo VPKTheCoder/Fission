@@ -34,7 +34,7 @@ function OrbEnergyBar({ count, side }) {
   );
 }
 
-export default function HUD({ mode, turn, scores, counts, currentPlayer, isThinking, isTwoPlayer = false, soundEnabled, onToggleSound }) {
+export default function HUD({ mode, turn, scores, counts, currentPlayer, isThinking, isTwoPlayer = false, soundEnabled, onToggleSound, overdriveEnergy }) {
   const MODE_LABELS = {
     [GAME_MODE.CONQUEST]: 'CONQUEST',
     [GAME_MODE.CASCADE]: 'CASCADE',
@@ -94,6 +94,9 @@ export default function HUD({ mode, turn, scores, counts, currentPlayer, isThink
         {(mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) && !isThinking && (
           <span className="score-line">
             {isTwoPlayer ? `P1: ${scores.human} | P2: ${scores.ai}` : `YOU: ${scores.human} | AI: ${scores.ai}`}
+            {mode === GAME_MODE.OVERDRIVE && overdriveEnergy && (
+              <> ⚡ {overdriveEnergy.human ?? 0}</>
+            )}
           </span>
         )}
         <div className="hud-keyhints">

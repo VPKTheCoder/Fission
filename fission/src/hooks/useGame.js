@@ -49,6 +49,8 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
   const [overdriveEnergy, setOverdriveEnergy] = useState({ [PLAYER.HUMAN]: 0, [PLAYER.AI]: 0 });
   const [usedAbility, setUsedAbility] = useState(false);
   const [quantumPending, setQuantumPending] = useState(false);
+  const [activeAbility, setActiveAbility] = useState(null);
+  const [stabilizeTarget, setStabilizeTarget] = useState(null);
 
   const finishGame = useCallback((gameWinner, finalScores) => {
     setWinner(gameWinner);
@@ -56,6 +58,12 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
   }, [onGameOver]);
 
   const resolveWinner = useCallback((nextBoard, nextTurn, nextScores) => {
+    if (nextTurn < 2) return null;
+
+    const counts = countOrbs(nextBoard);
+    if (counts[PLAYER.HUMAN] === 0 && counts[PLAYER.AI] > 0) return PLAYER.AI;
+    if (counts[PLAYER.AI] === 0 && counts[PLAYER.HUMAN] > 0) return PLAYER.HUMAN;
+
     if (mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) {
       const maxTurns = mode === GAME_MODE.OVERDRIVE ? 20 : CASCADE_TURNS_EACH;
       if (nextTurn >= maxTurns * 2) {
@@ -77,7 +85,7 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     if (!canPlace(board, row, col, player)) return false;
 
     const currentBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
-    const result = placeOrb(board, row, col, player, currentBonus);
+    const result = placeOrb(board, row, col, player, currentBonus, extraOptions);
     if (!result) return false;
 
     setIsAnimating(true);
@@ -143,6 +151,8 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     setScores(nextScores);
     setIsAnimating(false);
     setUsedAbility(false);
+    setActiveAbility(null);
+    setStabilizeTarget(null);
 
     if (nextWinner) {
       finishGame(nextWinner, nextScores);
@@ -155,25 +165,41 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
 
   const handleCellClick = useCallback(async (row, col) => {
     const player = isTwoPlayer ? currentPlayer : PLAYER.HUMAN;
-    if (mode === GAME_MODE.OVERDRIVE && quantumPending) {
-      const result = await applyPlayerMove(row, col, player);
-      if (result) {
-        const result2 = await applyPlayerMove(row, col, player);
-        setQuantumPending(false);
-        return result2;
+    if (mode === GAME_MODE.OVERDRIVE && activeAbility === 'stabilize') {
+      if (!stabilizeTarget) {
+        setStabilizeTarget({ row, col });
+        return true;
       }
+      const result = await applyPlayerMove(row, col, player, {
+        stabilizeCells: [[stabilizeTarget.row, stabilizeTarget.col]],
+      });
+      setActiveAbility(null);
+      setStabilizeTarget(null);
+      return result;
+    }
+    if (mode === GAME_MODE.OVERDRIVE && activeAbility === 'quantum') {
+      const result = await applyPlayerMove(row, col, player, { quantumMultiplier: 2 });
+      setActiveAbility(null);
       setQuantumPending(false);
       return result;
     }
     return applyPlayerMove(row, col, player);
-  }, [applyPlayerMove, mode, quantumPending, isTwoPlayer, currentPlayer]);
+  }, [applyPlayerMove, mode, activeAbility, stabilizeTarget, isTwoPlayer, currentPlayer]);
 
   const handleAIMove = useCallback((move) => {
     if (!move) {
       finishGame(PLAYER.HUMAN, scores);
       return false;
     }
-    return applyPlayerMove(move.row, move.col, PLAYER.AI);
+    const options = {};
+    if (move.ability === 'quantum') {
+      setOverdriveEnergy((e) => ({ ...e, [PLAYER.AI]: e[PLAYER.AI] - OVERDRIVE_QUANTUM_COST }));
+      options.quantumMultiplier = 2;
+    } else if (move.ability === 'stabilize' && move.stabilizeTarget) {
+      setOverdriveEnergy((e) => ({ ...e, [PLAYER.AI]: e[PLAYER.AI] - OVERDRIVE_STABILIZE_COST }));
+      options.stabilizeCells = [[move.stabilizeTarget.row, move.stabilizeTarget.col]];
+    }
+    return applyPlayerMove(move.row, move.col, PLAYER.AI, options);
   }, [applyPlayerMove, finishGame, scores]);
 
   const useAbility = useCallback((ability, player) => {
@@ -182,12 +208,15 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     if (ability === 'stabilize' && overdriveEnergy[player] >= OVERDRIVE_STABILIZE_COST) {
       setOverdriveEnergy((e) => ({ ...e, [player]: e[player] - OVERDRIVE_STABILIZE_COST }));
       setUsedAbility(true);
+      setActiveAbility('stabilize');
+      setStabilizeTarget(null);
       return { ok: true, type: 'stabilize' };
     }
 
     if (ability === 'quantum' && overdriveEnergy[player] >= OVERDRIVE_QUANTUM_COST) {
       setOverdriveEnergy((e) => ({ ...e, [player]: e[player] - OVERDRIVE_QUANTUM_COST }));
       setUsedAbility(true);
+      setActiveAbility('quantum');
       setQuantumPending(true);
       return { ok: true, type: 'quantum' };
     }
@@ -209,6 +238,8 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     setOverdriveEnergy({ [PLAYER.HUMAN]: 0, [PLAYER.AI]: 0 });
     setUsedAbility(false);
     setQuantumPending(false);
+    setActiveAbility(null);
+    setStabilizeTarget(null);
   }, [mode]);
 
   return {
@@ -232,5 +263,7 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     useAbility,
     usedAbility,
     quantumPending,
+    activeAbility,
+    stabilizeTarget,
   };
 }

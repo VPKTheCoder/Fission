@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
+import { DIFFICULTY } from '../utils/constants.js';
 
 const STAR_COUNT = 40;
 const ORB_COUNT = 12;
@@ -52,7 +53,7 @@ function createConfetti(w, h) {
   };
 }
 
-export default function ParticleCanvas({ ambiance = 'menu', victory = false, thinking = false }) {
+export default function ParticleCanvas({ ambiance = 'menu', victory = false, thinking = false, difficulty = DIFFICULTY.NORMAL }) {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
   const mouseRef = useRef({ x: 0.5, y: 0.5 });
@@ -66,8 +67,9 @@ export default function ParticleCanvas({ ambiance = 'menu', victory = false, thi
     const h = canvas.height = window.innerHeight;
 
     const isMobile = w < 720;
-    const starCount = isMobile ? Math.floor(STAR_COUNT * 0.4) : STAR_COUNT;
-    const orbCount = isMobile ? Math.floor(ORB_COUNT * 0.4) : ORB_COUNT;
+    const diffScale = difficulty === DIFFICULTY.HARD ? 0.25 : 1;
+    const starCount = isMobile ? Math.floor(STAR_COUNT * 0.4 * diffScale) : Math.floor(STAR_COUNT * diffScale);
+    const orbCount = isMobile ? Math.floor(ORB_COUNT * 0.4 * diffScale) : Math.max(1, Math.floor(ORB_COUNT * diffScale));
 
     stateRef.current = {
       ctx,
@@ -79,7 +81,7 @@ export default function ParticleCanvas({ ambiance = 'menu', victory = false, thi
       time: 0,
       isMobile,
     };
-  }, []);
+  }, [difficulty]);
 
   useEffect(() => {
     init();
@@ -117,13 +119,14 @@ export default function ParticleCanvas({ ambiance = 'menu', victory = false, thi
     });
 
     if (victory && state.confetti.length === 0) {
-      state.confetti = Array.from({ length: CONFETTI_COUNT }, () => createConfetti(state.w, state.h));
+      const confettiCount = difficulty === DIFFICULTY.HARD ? Math.floor(CONFETTI_COUNT * 0.25) : CONFETTI_COUNT;
+      state.confetti = Array.from({ length: confettiCount }, () => createConfetti(state.w, state.h));
     }
 
     if (!victory) {
       state.confetti = [];
     }
-  }, [ambiance, victory]);
+  }, [ambiance, victory, difficulty]);
 
   useEffect(() => {
     const state = stateRef.current;

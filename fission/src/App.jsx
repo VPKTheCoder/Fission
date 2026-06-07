@@ -158,7 +158,7 @@ export default function App() {
 
   return (
     <>
-      <ParticleCanvas ambiance={getAmbiance()} victory={isVictory} thinking={isThinking} />
+      <ParticleCanvas ambiance={getAmbiance()} victory={isVictory} thinking={isThinking} difficulty={difficulty} />
       <div className="page-transition" key={screen} ref={mainRef}>
         {content}
       </div>

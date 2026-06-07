@@ -1,6 +1,6 @@
 import { CELL_TYPE, COLS, PLAYER, ROWS, MELTDOWN_DEGRADE_INTERVAL, SINGULARITY_CELLS, GAME_MODE } from './constants.js';
 
-export function getCriticalMass(row, col, cellType, meltdownBonus = 0) {
+export function getCriticalMass(row, col, cellType, meltdownBonus = 0, stabilizeBonus = 0) {
   if (cellType === CELL_TYPE.SINGULARITY) return Infinity;
 
   const isCorner = (row === 0 || row === ROWS - 1) && (col === 0 || col === COLS - 1);
@@ -11,7 +11,7 @@ export function getCriticalMass(row, col, cellType, meltdownBonus = 0) {
     base = Math.max(1, base - 1);
   }
 
-  return Math.max(1, base - meltdownBonus);
+  return Math.max(1, base - meltdownBonus - stabilizeBonus);
 }
 
 export function getNeighbors(row, col) {
@@ -27,12 +27,13 @@ export function cloneBoard(board) {
   return board.map((row) => row.map((cell) => ({ ...cell })));
 }
 
-function collectCriticalCells(board, meltdownBonus) {
+function collectCriticalCells(board, meltdownBonus, stabilizeCells = []) {
   const queue = [];
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLS; col += 1) {
       const cell = board[row][col];
-      if (cell.orbs >= getCriticalMass(row, col, cell.type, meltdownBonus)) {
+      const stabBonus = stabilizeCells.some(([r, c]) => r === row && c === col) ? 1 : 0;
+      if (cell.orbs >= getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus)) {
         queue.push([row, col]);
       }
     }
@@ -40,9 +41,10 @@ function collectCriticalCells(board, meltdownBonus) {
   return queue;
 }
 
-export function processExplosions(inputBoard, meltdownBonus = 0) {
+export function processExplosions(inputBoard, meltdownBonus = 0, options = {}) {
+  const { quantumMultiplier = 1, stabilizeCells = [] } = options;
   const board = cloneBoard(inputBoard);
-  const queue = collectCriticalCells(board, meltdownBonus);
+  const queue = collectCriticalCells(board, meltdownBonus, stabilizeCells);
   const steps = [];
   let chainLength = 0;
   let iterations = 0;
@@ -54,12 +56,13 @@ export function processExplosions(inputBoard, meltdownBonus = 0) {
 
     const [row, col] = queue.shift();
     const cell = board[row][col];
-    const cm = getCriticalMass(row, col, cell.type, meltdownBonus);
+    const stabBonus = stabilizeCells.some(([r, c]) => r === row && c === col) ? 1 : 0;
+    const cm = getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus);
 
     if (cell.orbs < cm || cell.owner === null) continue;
 
     const owner = cell.owner;
-    const orbsToSend = cell.type === CELL_TYPE.AMPLIFIER ? 2 : 1;
+    const orbsToSend = (cell.type === CELL_TYPE.AMPLIFIER ? 2 : 1) * quantumMultiplier;
     const explodingCells = new Set([`${row},${col}`]);
 
     cell.orbs -= cm;
@@ -77,7 +80,8 @@ export function processExplosions(inputBoard, meltdownBonus = 0) {
       } else {
         neighbor.orbs += orbsToSend;
         neighbor.owner = owner;
-        if (neighbor.orbs >= getCriticalMass(nr, nc, neighbor.type, meltdownBonus)) {
+        const neighborStab = stabilizeCells.some(([r, c]) => r === nr && c === nc) ? 1 : 0;
+        if (neighbor.orbs >= getCriticalMass(nr, nc, neighbor.type, meltdownBonus, neighborStab)) {
           queue.push([nr, nc]);
         }
       }
@@ -98,14 +102,14 @@ export function canPlace(board, row, col, player) {
   return Boolean(cell && cell.type !== CELL_TYPE.SINGULARITY && (cell.owner === null || cell.owner === player));
 }
 
-export function placeOrb(board, row, col, player, meltdownBonus = 0) {
+export function placeOrb(board, row, col, player, meltdownBonus = 0, options = {}) {
   if (!canPlace(board, row, col, player)) return null;
 
   const nextBoard = cloneBoard(board);
   nextBoard[row][col].orbs += 1;
   nextBoard[row][col].owner = player;
 
-  const result = processExplosions(nextBoard, meltdownBonus);
+  const result = processExplosions(nextBoard, meltdownBonus, options);
   if (result.steps.length === 0) {
     result.steps.push({
       explodingCells: new Set(),

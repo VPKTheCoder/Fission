@@ -68,7 +68,7 @@ function getOrbPositions(count) {
 
 export default function Cell({
   cell, row, col, isValidMove, isExploding, onClick, currentPlayer,
-  isLastMove, isCursor, isHint, isPlacing,
+  isLastMove, isCursor, isHint, isPlacing, isStabilizeTarget,
 }) {
   const ownerClass = cell.owner ? `owner-${cell.owner}` : '';
   const typeClass = cell.type === CELL_TYPE.VOID && !cell.voidCharge ? 'cell-void-depleted' : `cell-${cell.type}`;
@@ -82,6 +82,7 @@ export default function Cell({
     isCursor ? 'cell-cursor' : '',
     isHint ? 'cell-hint' : '',
     isPlacing ? 'cell-placing' : '',
+    isStabilizeTarget ? 'cell-stabilize-target' : '',
   ].filter(Boolean).join(' ');
   const orbColor = cell.owner === PLAYER.AI ? 'var(--coral)' : 'var(--cyan)';
   const positions = getOrbPositions(cell.orbs);
