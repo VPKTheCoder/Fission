@@ -83,6 +83,7 @@ export default function Game({ mode, difficulty, isTwoPlayer = false, onGameOver
     winner: game.winner,
     onMove: handleAIMoveWrapper,
     overdriveEnergy: game.overdriveEnergy,
+    turn: game.turn,
   });
 
   const handleCellClick = useCallback(async (row, col) => {

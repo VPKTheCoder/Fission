@@ -1,11 +1,11 @@
 import { CELL_TYPE, COLS, PLAYER, ROWS, MELTDOWN_DEGRADE_INTERVAL, SINGULARITY_CELLS, GAME_MODE } from './constants.js';
 
-export function getCriticalMass(row, col, cellType, meltdownBonus = 0, stabilizeBonus = 0) {
+export function getCriticalMass(row, col, cellType, meltdownBonus = 0, stabilizeBonus = 0, gameMode = null) {
   if (cellType === CELL_TYPE.SINGULARITY) return Infinity;
 
   const isCorner = (row === 0 || row === ROWS - 1) && (col === 0 || col === COLS - 1);
   const isEdge = row === 0 || row === ROWS - 1 || col === 0 || col === COLS - 1;
-  let base = isCorner ? 2 : isEdge ? 3 : 4;
+  let base = isCorner ? (gameMode === GAME_MODE.MELTDOWN ? 3 : 2) : isEdge ? 3 : 4;
 
   if (cellType === CELL_TYPE.CATALYST) {
     base = Math.max(1, base - 1);
@@ -27,13 +27,13 @@ export function cloneBoard(board) {
   return board.map((row) => row.map((cell) => ({ ...cell })));
 }
 
-function collectCriticalCells(board, meltdownBonus, stabilizeCells = []) {
+function collectCriticalCells(board, meltdownBonus, stabilizeCells = [], gameMode = null) {
   const queue = [];
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLS; col += 1) {
       const cell = board[row][col];
       const stabBonus = stabilizeCells.some(([r, c]) => r === row && c === col) ? 1 : 0;
-      if (cell.orbs >= getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus)) {
+      if (cell.orbs >= getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus, gameMode)) {
         queue.push([row, col]);
       }
     }
@@ -42,9 +42,9 @@ function collectCriticalCells(board, meltdownBonus, stabilizeCells = []) {
 }
 
 export function processExplosions(inputBoard, meltdownBonus = 0, options = {}) {
-  const { quantumMultiplier = 1, stabilizeCells = [] } = options;
+  const { quantumMultiplier = 1, stabilizeCells = [], gameMode = null } = options;
   const board = cloneBoard(inputBoard);
-  const queue = collectCriticalCells(board, meltdownBonus, stabilizeCells);
+  const queue = collectCriticalCells(board, meltdownBonus, stabilizeCells, gameMode);
   const steps = [];
   let chainLength = 0;
   let iterations = 0;
@@ -57,7 +57,7 @@ export function processExplosions(inputBoard, meltdownBonus = 0, options = {}) {
     const [row, col] = queue.shift();
     const cell = board[row][col];
     const stabBonus = stabilizeCells.some(([r, c]) => r === row && c === col) ? 1 : 0;
-    const cm = getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus);
+    const cm = getCriticalMass(row, col, cell.type, meltdownBonus, stabBonus, gameMode);
 
     if (cell.orbs < cm || cell.owner === null) continue;
 
@@ -81,7 +81,7 @@ export function processExplosions(inputBoard, meltdownBonus = 0, options = {}) {
         neighbor.orbs += orbsToSend;
         neighbor.owner = owner;
         const neighborStab = stabilizeCells.some(([r, c]) => r === nr && c === nc) ? 1 : 0;
-        if (neighbor.orbs >= getCriticalMass(nr, nc, neighbor.type, meltdownBonus, neighborStab)) {
+        if (neighbor.orbs >= getCriticalMass(nr, nc, neighbor.type, meltdownBonus, neighborStab, gameMode)) {
           queue.push([nr, nc]);
         }
       }
@@ -109,7 +109,7 @@ export function placeOrb(board, row, col, player, meltdownBonus = 0, options = {
   nextBoard[row][col].orbs += 1;
   nextBoard[row][col].owner = player;
 
-  const result = processExplosions(nextBoard, meltdownBonus, options);
+  const result = processExplosions(nextBoard, meltdownBonus, { ...options });
   if (result.steps.length === 0) {
     result.steps.push({
       explodingCells: new Set(),
@@ -208,7 +208,7 @@ export function applyMeltdownDegradation(board, meltdownBonus) {
     for (let c = 0; c < COLS; c++) {
       const cell = newBoard[r][c];
       if (cell.orbs > 0 && cell.type !== CELL_TYPE.SINGULARITY) {
-        const cm = getCriticalMass(r, c, cell.type, meltdownBonus);
+        const cm = getCriticalMass(r, c, cell.type, meltdownBonus, 0, GAME_MODE.MELTDOWN);
         if (cell.orbs >= cm) {
           triggered.push([r, c]);
         }
@@ -217,7 +217,7 @@ export function applyMeltdownDegradation(board, meltdownBonus) {
   }
 
   if (triggered.length > 0) {
-    const result = processExplosions(newBoard, meltdownBonus);
+    const result = processExplosions(newBoard, meltdownBonus, { gameMode: GAME_MODE.MELTDOWN });
     return { board: result.board, triggered, steps: result.steps };
   }
 

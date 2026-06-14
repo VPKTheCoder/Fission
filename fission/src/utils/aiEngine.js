@@ -37,7 +37,7 @@ function countMobility(board, player) {
   return ours - theirs;
 }
 
-function evalConquest(board, player) {
+function evalConquest(board, player, meltBonus = 0) {
   const opponent = getOpponent(player);
   let score = 0;
 
@@ -45,7 +45,7 @@ function evalConquest(board, player) {
     for (let col = 0; col < board[row].length; col += 1) {
       const cell = board[row][col];
       if (cell.type === CELL_TYPE.SINGULARITY) continue;
-      const cm = getCriticalMass(row, col, cell.type);
+      const cm = getCriticalMass(row, col, cell.type, meltBonus);
       const pw = getPosWeight(row, col);
       const pressure = (cell.orbs / cm) - 1;
 
@@ -83,9 +83,9 @@ function evalCascade(scores, player) {
   return (scores?.[player] ?? 0) - (scores?.[opponent] ?? 0);
 }
 
-function evalBreach(board, player) {
+function evalBreach(board, player, meltBonus = 0) {
   const opponent = getOpponent(player);
-  let score = evalConquest(board, player);
+  let score = evalConquest(board, player, meltBonus);
 
   const corners = [[0, 0], [0, 7], [7, 0], [7, 7]];
   for (const [r, c] of corners) {
@@ -123,9 +123,9 @@ function evalSingularityBonus(board, player) {
   return bonus;
 }
 
-function evaluate(board, player, mode, scores) {
-  if (mode === GAME_MODE.BREACH) return evalBreach(board, player);
-  const conquest = evalConquest(board, player);
+function evaluate(board, player, mode, scores, meltBonus = 0) {
+  if (mode === GAME_MODE.BREACH) return evalBreach(board, player, meltBonus);
+  const conquest = evalConquest(board, player, meltBonus);
   const mobility = countMobility(board, player) * 1.5;
   if (mode === GAME_MODE.CASCADE || mode === GAME_MODE.OVERDRIVE) {
     return evalCascade(scores, player) + conquest * 0.12 + mobility;
@@ -136,10 +136,10 @@ function evaluate(board, player, mode, scores) {
   return conquest + mobility;
 }
 
-function movePriority(board, row, col, mode) {
+function movePriority(board, row, col, mode, turn) {
   const cell = board[row][col];
   if (!cell || cell.type === CELL_TYPE.SINGULARITY) return 99;
-  const bonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(99) : 0;
+  const bonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
   const cm = getCriticalMass(row, col, cell.type, bonus);
   const willExplode = cell.orbs + 1 >= cm;
 
@@ -150,10 +150,10 @@ function movePriority(board, row, col, mode) {
   return 4;
 }
 
-function orderMoves(board, moves, mode) {
+function orderMoves(board, moves, mode, turn) {
   return [...moves].sort((a, b) => {
-    const pa = movePriority(board, a[0], a[1], mode);
-    const pb = movePriority(board, b[0], b[1], mode);
+    const pa = movePriority(board, a[0], a[1], mode, turn);
+    const pb = movePriority(board, b[0], b[1], mode, turn);
     if (pa !== pb) return pa - pb;
     const aDr = a[0] - 3.5;
     const aDc = a[1] - 3.5;
@@ -170,29 +170,100 @@ function nextScores(scores, player, chainLength, mode) {
   return scores;
 }
 
+function getGameWinner(board, mode) {
+  if (mode === GAME_MODE.BREACH) return checkBreachWinner(board, 99);
+  return checkWinner(board, 99);
+}
+
+function quiescence(board, alpha, beta, isMaximizing, player, mode, scores, startTime, timeLimit, turn, searchState, qDepth) {
+  if (Date.now() - startTime > timeLimit) {
+    if (searchState) searchState.timedOut = true;
+    const meltBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
+    return evaluate(board, player, mode, scores, meltBonus);
+  }
+
+  const winner = getGameWinner(board, mode);
+  if (winner === player) return 10000;
+  if (winner === getOpponent(player)) return -10000;
+
+  const meltBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
+  const standPat = evaluate(board, player, mode, scores, meltBonus);
+
+  if (isMaximizing) {
+    if (standPat >= beta) return standPat;
+    if (standPat > alpha) alpha = standPat;
+  } else {
+    if (standPat <= alpha) return standPat;
+    if (standPat < beta) beta = standPat;
+  }
+
+  const activePlayer = isMaximizing ? player : getOpponent(player);
+  const moves = getValidMoves(board, activePlayer);
+
+  const volatile = [];
+  for (const [row, col] of moves) {
+    const cell = board[row][col];
+    const cm = getCriticalMass(row, col, cell.type, meltBonus);
+    if (cell.orbs + 1 >= cm) volatile.push([row, col]);
+  }
+
+  if (volatile.length === 0) return standPat;
+  if (qDepth >= 10) return standPat;
+
+  if (isMaximizing) {
+    let best = -Infinity;
+    for (const [row, col] of volatile) {
+      const result = placeOrb(board, row, col, activePlayer, meltBonus);
+      if (!result) continue;
+      let simBoard = result.board;
+      if (mode === GAME_MODE.SINGULARITY) {
+        simBoard = applySingularityDrain(simBoard).board;
+      }
+      const scoreState = nextScores(scores, activePlayer, result.chainLength, mode);
+      const score = quiescence(simBoard, alpha, beta, false, player, mode, scoreState, startTime, timeLimit, turn, searchState, qDepth + 1);
+      if (score > best) best = score;
+      if (score > alpha) alpha = score;
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+
+  let best = Infinity;
+  for (const [row, col] of volatile) {
+    const result = placeOrb(board, row, col, activePlayer, meltBonus);
+    if (!result) continue;
+    let simBoard = result.board;
+    if (mode === GAME_MODE.SINGULARITY) {
+      simBoard = applySingularityDrain(simBoard).board;
+    }
+    const scoreState = nextScores(scores, activePlayer, result.chainLength, mode);
+    const score = quiescence(simBoard, alpha, beta, true, player, mode, scoreState, startTime, timeLimit, turn, searchState, qDepth + 1);
+    if (score < best) best = score;
+    if (score < beta) beta = score;
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+
 function minimax(board, depth, alpha, beta, isMaximizing, player, mode, scores, startTime, timeLimit, turn, searchState) {
   if (Date.now() - startTime > timeLimit) {
     if (searchState) searchState.timedOut = true;
-    return { score: evalConquest(board, player) };
+    const meltBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
+    return { score: evalConquest(board, player, meltBonus) };
   }
   if (depth === 0) {
-    return { score: evaluate(board, player, mode, scores) };
+    return { score: quiescence(board, alpha, beta, isMaximizing, player, mode, scores, startTime, timeLimit, turn, searchState, 0) };
   }
 
   const opponent = getOpponent(player);
   const meltBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
 
-  let winner;
-  if (mode === GAME_MODE.BREACH) {
-    winner = checkBreachWinner(board, 99);
-  } else {
-    winner = checkWinner(board, 99);
-  }
+  const winner = getGameWinner(board, mode);
   if (winner === player) return { score: 10000 + depth };
   if (winner === opponent) return { score: -10000 - depth };
 
   const activePlayer = isMaximizing ? player : opponent;
-  const moves = orderMoves(board, getValidMoves(board, activePlayer), mode);
+  const moves = orderMoves(board, getValidMoves(board, activePlayer), mode, turn);
   if (moves.length === 0) return { score: 0 };
 
   let bestMove = null;
@@ -207,7 +278,8 @@ function minimax(board, depth, alpha, beta, isMaximizing, player, mode, scores, 
         simBoard = applySingularityDrain(simBoard).board;
       }
       const scoreState = nextScores(scores, activePlayer, result.chainLength, mode);
-      const child = minimax(simBoard, depth - 1, alpha, beta, false, player, mode, scoreState, startTime, timeLimit, turn, searchState);
+      const nextTurn = turn + 1;
+      const child = minimax(simBoard, depth - 1, alpha, beta, false, player, mode, scoreState, startTime, timeLimit, nextTurn, searchState);
       if (child.score > bestScore) {
         bestScore = child.score;
         bestMove = { row, col };
@@ -227,7 +299,8 @@ function minimax(board, depth, alpha, beta, isMaximizing, player, mode, scores, 
       simBoard = applySingularityDrain(simBoard).board;
     }
     const scoreState = nextScores(scores, activePlayer, result.chainLength, mode);
-    const child = minimax(simBoard, depth - 1, alpha, beta, true, player, mode, scoreState, startTime, timeLimit, turn, searchState);
+      const nextTurn = turn + 1;
+      const child = minimax(simBoard, depth - 1, alpha, beta, true, player, mode, scoreState, startTime, timeLimit, nextTurn, searchState);
     if (child.score < bestScore) {
       bestScore = child.score;
       bestMove = { row, col };
@@ -264,11 +337,11 @@ function pickRandom(moves) {
   return moves[Math.floor(Math.random() * moves.length)];
 }
 
-export function tryOverdriveAbilities(board, mode, difficulty, scores, overdriveEnergy, settings, orderedMoves) {
+export function tryOverdriveAbilities(board, mode, difficulty, scores, overdriveEnergy, settings, orderedMoves, turn = 0) {
   if (mode !== GAME_MODE.OVERDRIVE || difficulty !== DIFFICULTY.HARD) return null;
 
   const energy = overdriveEnergy?.[PLAYER.AI] ?? 0;
-  const topMoves = (orderedMoves || orderMoves(board, getValidMoves(board, PLAYER.AI), mode)).slice(0, 8);
+  const topMoves = (orderedMoves || orderMoves(board, getValidMoves(board, PLAYER.AI), mode, turn)).slice(0, 8);
   if (topMoves.length === 0) return null;
 
   let normalBestScore = -Infinity;
@@ -336,10 +409,10 @@ export function tryOverdriveAbilities(board, mode, difficulty, scores, overdrive
   return null;
 }
 
-export function getAIMove(board, difficulty, mode, scores = { human: 0, ai: 0 }, overdriveEnergy = { human: 0, ai: 0 }) {
+export function getAIMove(board, difficulty, mode, scores = { human: 0, ai: 0 }, overdriveEnergy = { human: 0, ai: 0 }, turn = 0) {
   return new Promise((resolve) => {
     const run = () => {
-      const moves = orderMoves(board, getValidMoves(board, PLAYER.AI), mode);
+      const moves = orderMoves(board, getValidMoves(board, PLAYER.AI), mode, turn);
       if (moves.length === 0) {
         resolve(null);
         return;
@@ -352,7 +425,7 @@ export function getAIMove(board, difficulty, mode, scores = { human: 0, ai: 0 },
         return;
       }
 
-      const abilityResult = tryOverdriveAbilities(board, mode, difficulty, scores, overdriveEnergy, settings, moves);
+      const abilityResult = tryOverdriveAbilities(board, mode, difficulty, scores, overdriveEnergy, settings, moves, turn);
       if (abilityResult) {
         resolve(abilityResult);
         return;
@@ -363,6 +436,8 @@ export function getAIMove(board, difficulty, mode, scores = { human: 0, ai: 0 },
       const timeLimit = settings.timeLimit;
 
       let bestResult = null;
+      let prevScore = 0;
+      let windowSize = 150;
       const searchState = {};
 
       for (let depth = 1; depth <= maxDepth; depth++) {
@@ -371,13 +446,41 @@ export function getAIMove(board, difficulty, mode, scores = { human: 0, ai: 0 },
         if (remaining < 300) break;
 
         searchState.timedOut = false;
-        const result = minimax(
-          board, depth, -Infinity, Infinity, true,
-          PLAYER.AI, mode, scores, startTime, remaining, 0, searchState,
-        );
+
+        let result;
+        if (depth <= 2 || !bestResult) {
+          result = minimax(
+            board, depth, -Infinity, Infinity, true,
+            PLAYER.AI, mode, scores, startTime, remaining, 0, searchState,
+          );
+        } else {
+          const aspAlpha = prevScore - windowSize;
+          const aspBeta = prevScore + windowSize;
+          result = minimax(
+            board, depth, aspAlpha, aspBeta, true,
+            PLAYER.AI, mode, scores, startTime, remaining, 0, searchState,
+          );
+
+          if (!searchState.timedOut && (result.score <= aspAlpha || result.score >= aspBeta)) {
+            searchState.timedOut = false;
+            const remaining2 = timeLimit - (Date.now() - startTime);
+            if (remaining2 > 200) {
+              result = minimax(
+                board, depth, -Infinity, Infinity, true,
+                PLAYER.AI, mode, scores, startTime, remaining2, 0, searchState,
+              );
+            }
+          }
+        }
 
         if (result && result.move && !searchState.timedOut) {
           bestResult = result;
+          if (depth > 1) {
+            prevScore = result.score;
+            windowSize = Math.max(80, Math.abs(result.score) * 0.15);
+          } else {
+            prevScore = result.score;
+          }
         } else {
           break;
         }

@@ -85,7 +85,7 @@ export function useGame({ mode, onGameOver, isTwoPlayer = false }) {
     if (!canPlace(board, row, col, player)) return false;
 
     const currentBonus = mode === GAME_MODE.MELTDOWN ? getMeltdownBonus(turn) : 0;
-    const result = placeOrb(board, row, col, player, currentBonus, extraOptions);
+    const result = placeOrb(board, row, col, player, currentBonus, { ...extraOptions, gameMode: mode });
     if (!result) return false;
 
     setIsAnimating(true);

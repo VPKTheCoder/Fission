@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PLAYER } from '../utils/constants.js';
 import { getAIMove } from '../utils/aiEngine.js';
 
-export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimating, winner, onMove, overdriveEnergy }) {
+export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimating, winner, onMove, overdriveEnergy, turn = 0 }) {
   const [isThinking, setIsThinking] = useState(false);
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
@@ -17,7 +17,7 @@ export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimat
 
       setIsThinking(true);
       const startedAt = Date.now();
-      const move = await getAIMove(board, difficulty, mode, scores, overdriveEnergy);
+      const move = await getAIMove(board, difficulty, mode, scores, overdriveEnergy, turn);
       const delay = Math.max(0, 450 - (Date.now() - startedAt));
 
       window.setTimeout(() => {
@@ -33,7 +33,7 @@ export function useAI({ board, currentPlayer, difficulty, mode, scores, isAnimat
     return () => {
       cancelled = true;
     };
-  }, [board, currentPlayer, difficulty, mode, scores, isAnimating, winner]);
+  }, [board, currentPlayer, difficulty, mode, scores, isAnimating, winner, turn]);
 
   return { isThinking };
 }
